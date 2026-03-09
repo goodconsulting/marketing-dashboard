@@ -10,6 +10,12 @@ export interface ToastConnectionStatus {
   locations: string[];
   locationCount: number;
   error?: string;
+  /** True when auth succeeds but scopes are wrong */
+  authenticated?: boolean;
+  /** Current JWT scope string */
+  scope?: string;
+  /** Scopes that are required but missing from the token */
+  missingScopes?: string[];
 }
 
 export interface ToastSyncResult {

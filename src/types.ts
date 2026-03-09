@@ -5,6 +5,8 @@ export type DataSourceType =
   | 'google'
   | 'toast'
   | 'incentivio'
+  | 'incentivio_crm'
+  | 'incentivio_menu'
   | 'organic'
   | '3po'
   | 'expenses'
@@ -87,7 +89,7 @@ export interface IncentivioMetrics {
   ltv: number;
 }
 
-// ─── CRM: Per-Customer Records ─────────────────────────────────
+// ─── CRM: Per-Customer Records (~44 fields) ──────────────────────
 // Journey stages from Incentivio's Guest Journey Stage field
 export type JourneyStage = 'WHALE' | 'LOYALIST' | 'REGULAR' | 'ROOKIE' | 'CHURNED' | 'SLIDER' | 'UNKNOWN';
 
@@ -103,7 +105,7 @@ export interface CRMCustomerRecord {
   attritionRisk: 'high' | 'medium' | 'low';  // computed from recency + frequency
   reachLocation: string;                       // primary location affinity
 
-  // Spend & frequency
+  // Core spend & frequency
   lifetimeSpend: number;
   lifetimeVisits: number;
   avgBasketValue: number;
@@ -112,6 +114,31 @@ export interface CRMCustomerRecord {
   lastYearSpend: number;
   lastYearOrders: number;
   currentLoyaltyBalance: number;
+
+  // Extended spend metrics
+  avgBasketValuePerMonth: number;
+  purchasesPerMonth: number;
+  avgPurchasesPerWeek: number;
+  last90DayMonthlySpend: number;
+  last90DayAvgWeeklySpend: number;
+  avgWeeklySpend: number;
+
+  // Percentiles
+  daysSinceLastVisitPct: number | null;
+  lifetimeAovPercentile: number | null;
+  purchasesPerMonthPct: number | null;
+
+  // Referrals
+  lifetimeReferrals: number;
+  referralsWhoOrdered: number;
+  ordersFromReferrals: number;
+  totalSpendFromReferrals: number;
+  uniqueReferralCode: string;
+
+  // Engagement
+  smsOrderNotificationOpt: boolean;
+  validEmail: boolean;
+  userAffiliation: string;
 
   // Dates
   accountCreatedDate: string;      // ISO date
@@ -122,10 +149,15 @@ export interface CRMCustomerRecord {
   // Computed cohort field
   classMonth: string;              // YYYY-MM of first order (signup proxy)
 
-  // Engagement flags (enrichable from Incentivio tags/custom fields)
+  // Signup & opt-in
   signupSource: string;
   emailOptIn: boolean;
   smsOptIn: boolean;
+
+  // Demographics (columns ready, populated when available)
+  dateOfBirth: string;
+  age: number | null;
+  gender: string;
 
   // Snapshot metadata
   snapshotMonth: string;           // YYYY-MM when this record was captured
@@ -142,12 +174,14 @@ export interface SegmentSummary {
   attritionHighCount: number;
 }
 
-// ─── Menu Intelligence: Expanded ─────────────────────────────────
+// ─── Menu Intelligence: Expanded (~35 fields) ────────────────────
 export interface MenuIntelligenceItem {
   name: string;
   score: number;
   price: number;
   parentGroup: string;
+  itemType: string;
+  overUnderState: string;
 
   // Volume metrics
   totalSoldLastYear: number;
@@ -160,6 +194,36 @@ export interface MenuIntelligenceItem {
   revenueFrequent: number;
   revenueInfrequent: number;
 
+  // Sold last month breakdown
+  soldLastMonthFrequent: number;
+  soldLastMonthInfrequent: number;
+
+  // Average orders per month
+  avgOrdersPerMonthAll: number;
+  avgOrdersPerMonthFrequent: number;
+  avgOrdersPerMonthInfrequent: number;
+
+  // Average sold per month
+  avgSoldPerMonthAll: number;
+  avgSoldPerMonthFrequent: number;
+  avgSoldPerMonthInfrequent: number;
+
+  // Penetration %
+  penetrationPctAll: number;
+  penetrationPctFrequent: number;
+  penetrationPctInfrequent: number;
+
+  // Daypart breakdown — total sold in each daypart
+  daypartBreakfastAll: number;
+  daypartBreakfastFrequent: number;
+  daypartBreakfastInfrequent: number;
+  daypartLunchAll: number;
+  daypartLunchFrequent: number;
+  daypartLunchInfrequent: number;
+  daypartDinnerAll: number;
+  daypartDinnerFrequent: number;
+  daypartDinnerInfrequent: number;
+
   // Computed ratios
   freqRevenueRatio: number;         // revenueFrequent / revenueLastYear
   infreqRevenueRatio: number;       // revenueInfrequent / revenueLastYear
@@ -168,6 +232,9 @@ export interface MenuIntelligenceItem {
 
   // Classification
   menuQuadrant: 'star' | 'plow_horse' | 'puzzle' | 'dog';  // BCG-style
+
+  // Snapshot metadata
+  snapshotMonth: string;
 }
 
 export interface OrganicMetrics {
@@ -214,7 +281,7 @@ export interface MonthlySnapshot {
   newLoyaltyAccounts: number;
   avgOrderValue: number;
 
-  // CRM Segment Counts (Phase A)
+  // CRM Segment Counts
   segmentCounts: Record<JourneyStage, number>;
   attritionHighCount: number;
   avgLTV: number;
@@ -228,6 +295,37 @@ export interface UploadedFile {
   recordCount: number;
   monthCovered: string;
 }
+
+// ─── Upload Pipeline Types ───────────────────────────────────────
+
+export interface DedupAnalysis {
+  totalIncoming: number;
+  existingCount: number;
+  newCount: number;
+  duplicateCount: number;
+  action: 'insert_new' | 'replace_all' | 'skip_duplicates' | 'snapshot_replace';
+  details: string;
+}
+
+export interface UploadPreview {
+  uploadId: string;
+  detectedSource: DataSourceType;
+  detectedMonth: string;
+  recordCount: number;
+  sampleRows: unknown[];
+  dedup: DedupAnalysis | null;
+  filename: string;
+}
+
+export interface ConfirmResult {
+  success: boolean;
+  recordCount: number;
+  insertedCount: number;
+  source: DataSourceType;
+  month: string;
+}
+
+// ─── Dashboard State ─────────────────────────────────────────────
 
 export interface DashboardState {
   expenses: MonthlyExpense[];
@@ -244,7 +342,7 @@ export interface DashboardState {
   annualBudget: number;
   toastDiscrepancies: ToastDiscrepancy[];
 
-  // Phase A: Per-customer CRM records + menu intelligence
+  // Per-customer CRM records + menu intelligence
   crmCustomers: CRMCustomerRecord[];
   menuIntelligence: MenuIntelligenceItem[];
 }

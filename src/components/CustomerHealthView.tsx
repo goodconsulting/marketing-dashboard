@@ -7,7 +7,7 @@ import { KPICard } from './KPICard';
 import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
-import { AlertTriangle, Users, TrendingDown, Heart } from 'lucide-react';
+import { AlertTriangle, Users, TrendingDown, Shield } from 'lucide-react';
 import type { CRMCustomerRecord, JourneyStage, MonthlySnapshot } from '../types';
 import { SEGMENT_COLORS } from '../utils/theme';
 
@@ -78,23 +78,37 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
       avgLTV,
       avgBasket,
       avgFrequency,
-      churnRate: customers.length > 0
-        ? (customers.filter(c => c.journeyStage === 'CHURNED').length / customers.length) * 100
-        : 0,
+      churnRate: (highRiskCount / customers.length) * 100,
     };
   }, [customers]);
 
+  // ─── Attrition Risk Distribution ───
+  const attritionData = useMemo(() => {
+    const counts = { high: 0, medium: 0, low: 0 };
+    customers.forEach(c => counts[c.attritionRisk]++);
+    return [
+      { name: 'High (Churned)', risk: 'high' as const, value: counts.high, color: '#ef4444' },
+      { name: 'Medium (Sliders)', risk: 'medium' as const, value: counts.medium, color: '#f59e0b' },
+      { name: 'Low (Stable)', risk: 'low' as const, value: counts.low, color: '#10b981' },
+    ].filter(d => d.value > 0);
+  }, [customers]);
+
   // ─── Location × Segment Heatmap Data ───
+  // Only track stages that actually appear from Guest Journey Stage column
+  type ActiveStage = 'WHALE' | 'LOYALIST' | 'REGULAR' | 'ROOKIE' | 'UNKNOWN';
+  const ACTIVE_STAGES: ActiveStage[] = ['WHALE', 'LOYALIST', 'REGULAR', 'ROOKIE', 'UNKNOWN'];
+
   const locationData = useMemo(() => {
-    const locations = new Map<string, Record<JourneyStage, number>>();
+    const locations = new Map<string, Record<ActiveStage, number>>();
     customers.forEach(c => {
       const loc = c.reachLocation || 'Unknown';
       if (!locations.has(loc)) {
-        locations.set(loc, {
-          WHALE: 0, LOYALIST: 0, REGULAR: 0, ROOKIE: 0, CHURNED: 0, SLIDER: 0, UNKNOWN: 0,
-        });
+        locations.set(loc, { WHALE: 0, LOYALIST: 0, REGULAR: 0, ROOKIE: 0, UNKNOWN: 0 });
       }
-      locations.get(loc)![c.journeyStage]++;
+      const stage = ACTIVE_STAGES.includes(c.journeyStage as ActiveStage)
+        ? (c.journeyStage as ActiveStage)
+        : 'UNKNOWN';
+      locations.get(loc)![stage]++;
     });
 
     return Array.from(locations.entries())
@@ -168,14 +182,14 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
         <KPICard
           label="Churn Rate"
           value={`${kpis?.churnRate.toFixed(1)}%`}
-          subtitle={`${customers.filter(c => c.journeyStage === 'CHURNED').length} churned`}
+          subtitle={`${kpis?.highRiskCount.toLocaleString()} churned (90+ days)`}
           color={kpis && kpis.churnRate > 25 ? '#ef4444' : '#f59e0b'}
         />
         <KPICard
-          label="High Attrition Risk"
-          value={kpis?.highRiskCount.toLocaleString() || '0'}
-          subtitle={`${kpis?.medRiskCount.toLocaleString()} medium risk`}
-          color="#ef4444"
+          label="At Risk (Sliders)"
+          value={kpis?.medRiskCount.toLocaleString() || '0'}
+          subtitle="trending toward churn"
+          color="#f59e0b"
         />
       </div>
 
@@ -193,14 +207,16 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
                 outerRadius={110}
                 paddingAngle={2}
                 dataKey="value"
-                label={({ name, pct }) => `${name} (${pct}%)`}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                label={((props: any) => `${props.name} (${props.pct}%)`) as any}
                 labelLine={true}
               >
                 {segmentData.map((entry) => (
                   <Cell key={entry.stage} fill={SEGMENT_COLORS[entry.stage]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number, name: string) => [`${value.toLocaleString()} customers`, name]} />
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              <Tooltip formatter={((value: number, name: string) => [`${value.toLocaleString()} customers`, name]) as any} />
             </PieChart>
           </ResponsiveContainer>
 
@@ -231,8 +247,7 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
                 <Bar dataKey="LOYALIST" stackId="a" name="Loyalist" fill={SEGMENT_COLORS.LOYALIST} />
                 <Bar dataKey="REGULAR" stackId="a" name="Regular" fill={SEGMENT_COLORS.REGULAR} />
                 <Bar dataKey="ROOKIE" stackId="a" name="Rookie" fill={SEGMENT_COLORS.ROOKIE} />
-                <Bar dataKey="SLIDER" stackId="a" name="Slider" fill={SEGMENT_COLORS.SLIDER} />
-                <Bar dataKey="CHURNED" stackId="a" name="Churned" fill={SEGMENT_COLORS.CHURNED} />
+                <Bar dataKey="UNKNOWN" stackId="a" name="Unknown" fill={SEGMENT_COLORS.UNKNOWN} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -261,59 +276,48 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
         )}
       </div>
 
-      {/* Attrition Risk Table */}
-      {atRiskCustomers.length > 0 && (
+      {/* Attrition Risk Distribution */}
+      {attritionData.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle size={18} className="text-red-500" />
-            <h3 className="text-sm font-semibold text-gray-700">
-              High-Value Customers at Risk ({atRiskCustomers.length} high-risk w/ spend)
-            </h3>
+            <Shield size={18} className="text-amber-500" />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">Attrition Risk Distribution</h3>
+              <p className="text-[10px] text-gray-400 mt-0.5">Based on Incentivio's attrition risk scoring (Churned / Slider / No Risk)</p>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-xs text-gray-500 uppercase">
-                  <th className="pb-2 pr-4">Customer</th>
-                  <th className="pb-2 pr-4">Stage</th>
-                  <th className="pb-2 pr-4">Location</th>
-                  <th className="pb-2 pr-4 text-right">Lifetime Spend</th>
-                  <th className="pb-2 pr-4 text-right">Days Since Visit</th>
-                  <th className="pb-2 pr-4 text-right">Last 90d Spend</th>
-                  <th className="pb-2 text-right">Visits</th>
-                </tr>
-              </thead>
-              <tbody>
-                {atRiskCustomers.map(c => (
-                  <tr key={c.customerId} className="border-b border-gray-50 hover:bg-red-50/30">
-                    <td className="py-2 pr-4">
-                      <span className="font-medium text-gray-800">
-                        {c.firstName} {c.lastName?.[0]}.
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span
-                        className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                        style={{ backgroundColor: SEGMENT_COLORS[c.journeyStage] }}
-                      >
-                        {SEGMENT_LABELS[c.journeyStage]}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4 text-gray-600">{c.reachLocation || '—'}</td>
-                    <td className="py-2 pr-4 text-right font-medium text-gray-800">
-                      {formatCurrency(c.lifetimeSpend)}
-                    </td>
-                    <td className="py-2 pr-4 text-right">
-                      <span className={c.daysSinceLastVisit > 60 ? 'text-red-600 font-medium' : 'text-gray-600'}>
-                        {c.daysSinceLastVisit === 999 ? '—' : `${c.daysSinceLastVisit}d`}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4 text-right text-gray-600">{formatCurrency(c.last90DaysSpend)}</td>
-                    <td className="py-2 text-right text-gray-600">{c.lifetimeVisits}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            {attritionData.map(d => (
+              <div key={d.risk} className="rounded-lg p-4 text-center" style={{ backgroundColor: `${d.color}10` }}>
+                <p className="text-xs text-gray-500 mb-1">{d.name}</p>
+                <p className="text-2xl font-bold" style={{ color: d.color }}>{d.value.toLocaleString()}</p>
+                <p className="text-xs mt-1" style={{ color: d.color }}>
+                  {customers.length > 0 ? ((d.value / customers.length) * 100).toFixed(1) : '0'}%
+                </p>
+              </div>
+            ))}
+          </div>
+          {/* Risk bar */}
+          <div className="w-full h-5 rounded-full overflow-hidden flex bg-gray-100">
+            {attritionData.map(d => {
+              const pct = customers.length > 0 ? (d.value / customers.length) * 100 : 0;
+              return (
+                <div
+                  key={d.risk}
+                  className="h-full transition-all"
+                  style={{ width: `${pct}%`, backgroundColor: d.color }}
+                  title={`${d.name}: ${d.value.toLocaleString()} (${pct.toFixed(1)}%)`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-400 mt-1.5">
+            {attritionData.map(d => (
+              <span key={d.risk} className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: d.color }} />
+                {d.name}
+              </span>
+            ))}
           </div>
         </div>
       )}
@@ -361,6 +365,63 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
           );
         })}
       </div>
+
+      {/* Attrition Risk Table */}
+      {atRiskCustomers.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertTriangle size={18} className="text-red-500" />
+            <h3 className="text-sm font-semibold text-gray-700">
+              High-Value Customers at Risk ({atRiskCustomers.length} high-risk w/ spend)
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-left text-xs text-gray-500 uppercase">
+                  <th className="pb-2 pr-4">Customer</th>
+                  <th className="pb-2 pr-4">Stage</th>
+                  <th className="pb-2 pr-4">Location</th>
+                  <th className="pb-2 pr-4 text-right">Lifetime Spend</th>
+                  <th className="pb-2 pr-4 text-right">Days Since Purchase</th>
+                  <th className="pb-2 pr-4 text-right">Last 90d Spend</th>
+                  <th className="pb-2 text-right">Visits</th>
+                </tr>
+              </thead>
+              <tbody>
+                {atRiskCustomers.map(c => (
+                  <tr key={c.customerId} className="border-b border-gray-50 hover:bg-red-50/30">
+                    <td className="py-2 pr-4">
+                      <span className="font-medium text-gray-800">
+                        {c.firstName} {c.lastName?.[0]}.
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                        style={{ backgroundColor: SEGMENT_COLORS[c.journeyStage] }}
+                      >
+                        {SEGMENT_LABELS[c.journeyStage]}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4 text-gray-600">{c.reachLocation || '—'}</td>
+                    <td className="py-2 pr-4 text-right font-medium text-gray-800">
+                      {formatCurrency(c.lifetimeSpend)}
+                    </td>
+                    <td className="py-2 pr-4 text-right">
+                      <span className={c.daysSinceLastVisit > 60 ? 'text-red-600 font-medium' : 'text-gray-600'}>
+                        {c.daysSinceLastVisit === 999 ? '—' : `${c.daysSinceLastVisit}d`}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4 text-right text-gray-600">{formatCurrency(c.last90DaysSpend)}</td>
+                    <td className="py-2 text-right text-gray-600">{c.lifetimeVisits}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

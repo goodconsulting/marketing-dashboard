@@ -46,19 +46,17 @@ function TabSpinner() {
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const store = useDashboardStore();
+  const { snapshots, addToastSales } = store;
 
-  // Snapshots are now pre-computed via useMemo inside the store hook
-  const { snapshots } = store;
-
-  // Toast POS sync hook — wired to store's source-aware addToastSales
+  // Toast POS sync hook — pushes API data through the store to SQLite
   const handleToastSales = useCallback(
-    (sales: ToastSales[], source: 'api') => store.addToastSales(sales, source),
-    [store.addToastSales],
+    (sales: ToastSales[]) => addToastSales(sales),
+    [addToastSales],
   );
   const { syncState: toastSyncState, checkConnection: checkToastConnection, sync: toastSync } =
     useToastSync(handleToastSales);
 
-  // ─── Loading state while IndexedDB hydrates ─────────────────────
+  // ─── Loading state while server hydrates ────────────────────────
   if (store.isLoading) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center">
@@ -95,7 +93,7 @@ export default function App() {
           )}
 
           {activeTab === 'attribution' && (
-            <AttributionView snapshots={snapshots} />
+            <AttributionView snapshots={snapshots} customers={store.state.crmCustomers} />
           )}
 
           {activeTab === 'customers' && (
@@ -123,18 +121,9 @@ export default function App() {
 
           {activeTab === 'upload' && (
             <FileUpload
-              onExpensesParsed={store.addExpenses}
-              onMetaParsed={store.addMetaCampaigns}
-              onGoogleCampaignsParsed={store.addGoogleCampaigns}
-              onGoogleDailyParsed={store.addGoogleDaily}
-              onToastSalesParsed={(sales) => store.addToastSales(sales, 'csv')}
-              onIncentivioData={store.addIncentivio}
-              onCRMCustomers={store.addCRMCustomers}
-              onMenuIntelligence={store.addMenuIntelligence}
-              onBudgetsParsed={store.addBudgets}
-              onFileUploaded={store.addUploadedFile}
               uploadedFiles={store.state.uploadedFiles}
               onClearData={store.clearAllData}
+              onUploadConfirmed={store.refresh}
             />
           )}
 

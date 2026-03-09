@@ -39,13 +39,26 @@ interface SyncRequest {
 
 // ── In-Memory Caches ─────────────────────────────────────────────────
 
-let tokenCache: ToastToken | null = null;
+let tokenCache: (ToastToken & { scope: string }) | null = null;
 let locationCache: { locations: ToastLocation[]; expiresAt: number } | null = null;
 let lastRequestTime = 0;
 
 // ── Constants ────────────────────────────────────────────────────────
 
 const RATE_LIMIT_MS = 210; // ~5 req/sec with safety margin
+
+/** Scopes required for full Toast integration (orders + restaurant discovery) */
+const REQUIRED_SCOPES = ['orders:read', 'restaurants:read'];
+
+/** Decode JWT payload without verification (we trust Toast's endpoint) */
+function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  try {
+    const payload = jwt.split('.')[1];
+    return JSON.parse(Buffer.from(payload, 'base64url').toString());
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Map common Toast restaurant name fragments to canonical Stack location names.
@@ -58,6 +71,7 @@ const CANONICAL_LOCATIONS = [
   'Downtown Cedar Rapids',
   'Fountains',
   'Waukee',
+  'Urbandale',
 ];
 
 function matchLocationName(rawName: string): string {
@@ -66,11 +80,12 @@ function matchLocationName(rawName: string): string {
     if (lower.includes(canonical.toLowerCase())) return canonical;
   }
   // Check shorthand matches
-  if (lower.includes('downtown') || lower.includes('cedar rapids')) return 'Downtown Cedar Rapids';
+  if (lower.includes('downtown') || lower.includes('cr downtown') || lower.includes('cedar rapids')) return 'Downtown Cedar Rapids';
   if (lower.includes('coral')) return 'Coralville';
   if (lower.includes('edge')) return 'Edgewood';
   if (lower.includes('fountain')) return 'Fountains';
   if (lower.includes('waukee')) return 'Waukee';
+  if (lower.includes('urbandale') || lower.includes('hickman')) return 'Urbandale';
   // If no match, return the raw name trimmed
   return rawName.trim();
 }
@@ -130,6 +145,7 @@ async function getToken(): Promise<string> {
     body: JSON.stringify({
       clientId: getEnv('TOAST_CLIENT_ID'),
       clientSecret: getEnv('TOAST_CLIENT_SECRET'),
+      userAccessType: 'TOAST_MACHINE_CLIENT',
     }),
   });
 
@@ -138,19 +154,33 @@ async function getToken(): Promise<string> {
     throw new Error(`Toast auth failed (${res.status}): ${text}`);
   }
 
-  const data = await res.json();
+  const data = await res.json() as Record<string, unknown>;
   // Toast returns { token: { ... }, status: "SUCCESS" } or { accessToken, tokenType }
-  const accessToken = data.token?.accessToken || data.accessToken;
+  const tokenObj = data.token as Record<string, unknown> | undefined;
+  const accessToken = (tokenObj?.accessToken || data.accessToken) as string | undefined;
   if (!accessToken) {
     throw new Error(`Toast auth response missing token: ${JSON.stringify(data).substring(0, 200)}`);
   }
 
+  // Decode token to check scopes
+  const jwtPayload = decodeJwtPayload(accessToken);
+  const scope = (jwtPayload.scope as string) || '';
+
   tokenCache = {
     accessToken,
     expiresAt: Date.now() + 23 * 60 * 60 * 1000, // Cache for 23 hours
+    scope,
   };
 
-  console.log('[Toast] Authenticated successfully');
+  const missingScopes = REQUIRED_SCOPES.filter(s => !scope.includes(s));
+  if (missingScopes.length > 0) {
+    console.warn(`[Toast] ⚠ Authenticated but token is missing required scopes: ${missingScopes.join(', ')}`);
+    console.warn(`[Toast]   Current scope: "${scope}"`);
+    console.warn(`[Toast]   Fix: In Toast Developer Portal → Credentials → edit scopes → add: ${missingScopes.join(', ')}`);
+  } else {
+    console.log(`[Toast] Authenticated successfully (scope: ${scope})`);
+  }
+
   return accessToken;
 }
 
@@ -180,12 +210,18 @@ async function getLocations(): Promise<ToastLocation[]> {
       throw new Error(`Failed to fetch locations (${res.status}): ${text}`);
     }
 
-    const data = await res.json();
-    const restaurants = Array.isArray(data) ? data : data.restaurants || [];
+    const data = await res.json() as Record<string, unknown>;
+    const restaurants = Array.isArray(data)
+      ? data
+      : (data.results as Record<string, unknown>[] || data.restaurants as Record<string, unknown>[] || []);
 
-    for (const r of restaurants) {
-      const guid = r.restaurantGuid || r.guid || r.restaurantExternalId;
-      const rawName = r.restaurantName || r.name || guid;
+    for (const r of restaurants as Record<string, unknown>[]) {
+      const guid = (r.restaurantGuid || r.guid || r.restaurantExternalId) as string | undefined;
+      // Toast returns locationName (e.g. "Edgewood") and restaurantName (e.g. "Stack Wellness")
+      // Prefer locationName for matching since it's the most specific
+      const locationName = r.locationName as string | undefined;
+      const restaurantName = (r.restaurantName || r.name || guid) as string;
+      const rawName = locationName || restaurantName;
       if (guid) {
         locations.push({
           guid,
@@ -195,7 +231,7 @@ async function getLocations(): Promise<ToastLocation[]> {
       }
     }
 
-    pageToken = data.nextPageToken || null;
+    pageToken = (data.nextPageToken as string) || null;
   } while (pageToken);
 
   locationCache = {
@@ -251,8 +287,8 @@ async function fetchOrdersForDate(
       break;
     }
 
-    const orders = await res.json();
-    const orderList = Array.isArray(orders) ? orders : orders.orders || [];
+    const orders = await res.json() as Record<string, unknown>;
+    const orderList = (Array.isArray(orders) ? orders : (orders.orders as Record<string, unknown>[]) || []) as Record<string, unknown>[];
 
     if (orderList.length === 0) {
       hasMore = false;
@@ -264,18 +300,19 @@ async function fetchOrdersForDate(
 
       // Gross sales: total amount on the order
       const amount = order.amount || order.totalAmount || 0;
-      agg.grossSales += typeof amount === 'number' ? amount : parseFloat(amount) || 0;
+      agg.grossSales += typeof amount === 'number' ? amount : parseFloat(String(amount)) || 0;
 
       // Discount total
       const discount = order.discountAmount || order.totalDiscountAmount || 0;
-      agg.discountTotal += typeof discount === 'number' ? discount : parseFloat(discount) || 0;
+      agg.discountTotal += typeof discount === 'number' ? discount : parseFloat(String(discount)) || 0;
 
       // Net sales: try explicit field, otherwise gross - discount
       if (order.netAmount !== undefined) {
-        agg.netSales += typeof order.netAmount === 'number' ? order.netAmount : parseFloat(order.netAmount) || 0;
+        const net = order.netAmount;
+        agg.netSales += typeof net === 'number' ? net : parseFloat(String(net)) || 0;
       } else {
-        agg.netSales += (typeof amount === 'number' ? amount : parseFloat(amount) || 0)
-                      - (typeof discount === 'number' ? discount : parseFloat(discount) || 0);
+        agg.netSales += (typeof amount === 'number' ? amount : parseFloat(String(amount)) || 0)
+                      - (typeof discount === 'number' ? discount : parseFloat(String(discount)) || 0);
       }
     }
 
@@ -337,11 +374,32 @@ export async function handleToastRequest(
     if (path === '/status' && req.method === 'GET') {
       try {
         await getToken();
+
+        // Check if token has required scopes before trying to fetch locations
+        const scope = tokenCache?.scope || '';
+        const missingScopes = REQUIRED_SCOPES.filter(s => !scope.includes(s));
+
+        if (missingScopes.length > 0) {
+          sendJSON(res, 200, {
+            connected: false,
+            locations: [],
+            authenticated: true,
+            scope,
+            missingScopes,
+            error: `Authentication succeeded, but your API credentials are missing required scopes: ${missingScopes.join(', ')}. `
+              + `Current scope: "${scope}". `
+              + `Fix: Go to Toast Developer Portal → API Credentials → edit your credential set → add scopes: ${missingScopes.join(', ')}. `
+              + `Then regenerate your client secret and update .env.`,
+          });
+          return;
+        }
+
         const locations = await getLocations();
         sendJSON(res, 200, {
           connected: true,
           locations: locations.map(l => l.name),
           locationCount: locations.length,
+          scope,
         });
       } catch (err) {
         sendJSON(res, 200, {

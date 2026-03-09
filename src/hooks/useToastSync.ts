@@ -18,6 +18,10 @@ export interface ToastSyncState {
   lastSyncedAt: string | null;
   lastSyncResult: ToastSyncResult | null;
   error: string | null;
+  /** Set when auth works but scopes are misconfigured */
+  missingScopes: string[];
+  /** Current token scope from Toast */
+  scope: string;
 }
 
 const LAST_SYNCED_KEY = 'toast_last_synced';
@@ -41,6 +45,8 @@ export function useToastSync(
     lastSyncedAt: loadLastSynced(),
     lastSyncResult: null,
     error: null,
+    missingScopes: [],
+    scope: '',
   });
 
   const checkConnection = useCallback(async () => {
@@ -52,6 +58,8 @@ export function useToastSync(
         connectionStatus: status.connected ? 'connected' : 'disconnected',
         locations: status.locations,
         error: status.error || null,
+        missingScopes: status.missingScopes || [],
+        scope: status.scope || '',
       }));
       return status.connected;
     } catch (err) {

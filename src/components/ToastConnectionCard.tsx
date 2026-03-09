@@ -144,7 +144,7 @@ export function ToastConnectionCard({
             </button>
             <button
               onClick={onCheckConnection}
-              disabled={syncState.connectionStatus === 'checking'}
+              disabled={syncState.isSyncing}
               className="text-xs text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline"
             >
               Re-check Connection
@@ -174,14 +174,43 @@ export function ToastConnectionCard({
       {/* Disconnected / Error states */}
       {(syncState.connectionStatus === 'disconnected' || syncState.connectionStatus === 'error') && (
         <div className="space-y-3">
-          <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-xs">
-            <XCircle size={14} className="mt-0.5 shrink-0" />
-            <div>
-              <p className="font-medium">Unable to connect to Toast API</p>
-              {syncState.error && <p className="mt-1 text-red-600">{syncState.error}</p>}
-              <p className="mt-1 text-red-500">Check that TOAST_CLIENT_ID and TOAST_CLIENT_SECRET are set in .env</p>
+          {/* Scope-specific diagnostic: auth works but wrong permissions */}
+          {syncState.missingScopes.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 p-3 bg-amber-50 text-amber-800 rounded-lg text-xs">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <div className="space-y-2">
+                  <p className="font-medium">Authentication works, but API scopes need updating</p>
+                  <p>
+                    Current scope: <code className="bg-amber-100 px-1 rounded text-[11px]">{syncState.scope}</code>
+                  </p>
+                  <p>
+                    Missing: {syncState.missingScopes.map(s => (
+                      <code key={s} className="bg-red-100 text-red-700 px-1 rounded text-[11px] mr-1">{s}</code>
+                    ))}
+                  </p>
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-700 space-y-1.5">
+                <p className="font-semibold text-gray-800">How to fix:</p>
+                <ol className="list-decimal list-inside space-y-1 text-gray-600">
+                  <li>Go to <strong>Toast Developer Portal</strong> → Standard API Access</li>
+                  <li>Edit your <strong>"Stack - CIO"</strong> credential set</li>
+                  <li>Add scopes: {syncState.missingScopes.map(s => <code key={s} className="bg-white border px-1 rounded text-[11px]">{s}</code>)}</li>
+                  <li>Save, regenerate client secret, and update <code className="bg-white border px-1 rounded text-[11px]">.env</code></li>
+                </ol>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-xs">
+              <XCircle size={14} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium">Unable to connect to Toast API</p>
+                {syncState.error && <p className="mt-1 text-red-600">{syncState.error}</p>}
+                <p className="mt-1 text-red-500">Check that TOAST_CLIENT_ID and TOAST_CLIENT_SECRET are set in .env</p>
+              </div>
+            </div>
+          )}
           <button
             onClick={onCheckConnection}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"

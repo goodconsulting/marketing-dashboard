@@ -3,7 +3,7 @@
 ## Quick Reference
 
 ```bash
-npm run dev          # Start dev server (localhost:5173)
+npm run dev          # Start dev server (localhost:5173) — SQLite + Vite middleware
 npm run build        # Type-check + production build
 npm run lint         # ESLint
 npx tsc --noEmit     # Type-check only (fast)
@@ -19,7 +19,7 @@ npm run preview      # Preview production build
 | Bundler | Vite | 7.3 |
 | Styling | Tailwind CSS | 4.2 |
 | Charts | Recharts | 3.7 |
-| Persistence | idb (IndexedDB) | 8.0 |
+| Database | better-sqlite3 | 12.6 |
 | CSV Parsing | PapaParse | 5.5 |
 | Excel Parsing | SheetJS (xlsx) | 0.18 |
 | Icons | Lucide React | 0.577 |
@@ -32,22 +32,62 @@ npm run preview      # Preview production build
 - `erasableSyntaxOnly: true` — no `const enum` or `namespace`
 - `strict: true` — full strict mode
 - Target: ES2022, Module: ESNext, JSX: react-jsx
+- Separate configs: `tsconfig.node.json` for `server/**/*.ts`, `tsconfig.app.json` for `src/**/*.ts`
 
 ## Architecture
 
+### Data Flow
+
+All data lives in a local SQLite database (`data/stack.db`). The React frontend communicates with a server-side API via Vite dev middleware — zero external infrastructure.
+
+```
+CSV/XLSX Files
+  ↓ (drag & drop)
+POST /api/data/upload  ← raw file body
+  ↓
+Server Parser (server/parsers/*)
+  ├── detectSourceType(filename)       → filename pattern matching
+  ├── detectSourceFromHeaders(file)    → header-based fallback
+  ├── Parse into typed records
+  ↓
+In-Memory Staging (30 min TTL)
+  ├── Dedup analysis against existing DB data
+  ├── Returns UploadPreview { source, month, recordCount, dedup, sampleRows }
+  ↓
+User Confirms in UI
+  ↓
+POST /api/data/upload/confirm
+  ├── BEGIN TRANSACTION
+  ├── Write to SQLite (dedup strategy per source)
+  ├── COMMIT + log to upload_log
+  ↓
+GET /api/data/state  ← client refreshes
+  ├── Server-computed MonthlySnapshot[] (SQL aggregation)
+  ├── All data slices returned in one payload
+  ↓
+React State → View Components
+```
+
+### Server-Side SQLite
+
+- **Connection**: `server/db/connection.ts` — singleton `better-sqlite3` instance, WAL journal mode
+- **Schema**: `server/db/schema.ts` — 12 tables with dedup indexes, auto-migration on startup
+- **Queries**: `server/db/queries.ts` — prepared statement wrappers, snapshot aggregation SQL
+- **DB file**: `data/stack.db` (gitignored)
+
+### API Layer
+
+Vite dev middleware at `/api/data/*` (`server/viteDataPlugin.ts`). Raw Node.js request handlers, no Express.
+
 ### State Management
 
-Single `useState<DashboardState>` hook in `src/store.ts`. All 13 data slices live in one object. State updates use `setState(prev => ({ ...prev, slice: newValue }))`.
+Single `useState<DashboardState>` hook in `src/store.ts`. Hydrates from `GET /api/data/state` on mount. Store exposes `refresh()` to re-fetch after uploads.
 
-Derived data: `snapshots` computed via `useMemo` with 9 granular dependency array entries (individual state slices, not the full state object). This ensures snapshots only recompute when actual data changes, not when unrelated slices (uploadedFiles, etc.) update.
+Snapshots are computed server-side via SQL aggregation (no client-side `useMemo`).
 
 ### Code Splitting
 
 All 9 view components are lazy-loaded via `React.lazy()` in `App.tsx`. Named exports use the `.then(m => ({ default: m.Name }))` pattern. Views are wrapped in `<Suspense>` with a spinner fallback.
-
-### Persistence
-
-IndexedDB via `idb` library in `src/db.ts`. All writes use `withRetry(fn, { retries: 2, delayMs: 500 })` with exponential backoff. Failed writes surface toast notifications. Data hydrates from IndexedDB on mount, with one-time localStorage migration for upgrades.
 
 ### Notifications
 
@@ -58,10 +98,11 @@ Context-based toast system in `src/components/Toast.tsx`. Uses React 19 `<Contex
 ```
 src/
 ├── api/
+│   ├── dataApi.ts               # Fetch wrappers for /api/data/* endpoints
 │   └── toastApi.ts              # Toast POS API client
 ├── components/
 │   ├── Header.tsx               # Tab navigation (10 tabs)
-│   ├── FileUpload.tsx           # CSV/XLSX upload + source detection
+│   ├── FileUpload.tsx           # Upload with preview/confirm/cancel flow
 │   ├── KPICard.tsx              # Reusable metric card
 │   ├── ExportButton.tsx         # CSV/JSON download dropdown
 │   ├── Toast.tsx                # Notification system (context + provider)
@@ -78,55 +119,94 @@ src/
 ├── hooks/
 │   └── useToastSync.ts          # Toast POS data sync hook
 ├── utils/
-│   ├── parsers.ts               # CSV/XLSX parsers for all data sources
 │   ├── categorize.ts            # Expense vendor → category mapping
 │   ├── export.ts                # CSV/JSON export utility
 │   ├── periodComparison.ts      # MoM, QoQ, YoY comparison logic
 │   └── theme.ts                 # Centralized brand/chart colors
-├── App.tsx                      # Root: lazy views, tab routing, snapshot passing
-├── store.ts                     # useState store + useMemo snapshots
-├── db.ts                        # IndexedDB schema, reads, writes, migrations
+├── App.tsx                      # Root: lazy views, tab routing
+├── store.ts                     # Server-backed state (fetch + refresh)
 ├── types.ts                     # All TypeScript interfaces
 ├── main.tsx                     # Entry: StrictMode + ToastProvider
 └── index.css                    # Tailwind import + CSS custom properties
 
 server/
+├── db/
+│   ├── connection.ts            # better-sqlite3 singleton (WAL mode)
+│   ├── schema.ts                # CREATE TABLE + indexes + migrations
+│   └── queries.ts               # Prepared statements + snapshot SQL
+├── parsers/
+│   ├── detect.ts                # Source detection (filename + headers)
+│   ├── crm.ts                   # Incentivio CRM (~44 fields)
+│   ├── menuIntelligence.ts      # Menu intelligence (~35 fields)
+│   ├── expenses.ts              # QuickBooks CSV/XLSX
+│   ├── meta.ts                  # Meta Ads campaigns
+│   ├── google.ts                # Google Ads campaigns + daily
+│   ├── toast.ts                 # Toast POS CSV
+│   ├── budget.ts                # Operating budget XLSX
+│   ├── categorize.ts            # Expense category mapping
+│   └── index.ts                 # Barrel export
+├── api/
+│   └── uploadPipeline.ts        # Stage/confirm/cancel with dedup
+├── viteDataPlugin.ts            # Vite middleware: /api/data/* routes
 ├── toastProxy.ts                # Toast API proxy handler
-└── viteToastPlugin.ts           # Vite dev middleware for /api/toast/*
+├── viteToastPlugin.ts           # Vite middleware: /api/toast/*
+└── types.ts                     # Server-side type definitions
 ```
 
-## Data Pipeline
+## API Routes
 
-```
-CSV/XLSX Files
-  ↓
-FileUpload.processFile()
-  ├── detectSourceType(filename)       → filename pattern matching
-  ├── detectSourceFromHeaders(file)    → header-based fallback
-  ↓
-Parser (src/utils/parsers.ts)
-  ├── parseExpensesCSV / parseExpensesXLSX
-  ├── parseMetaCampaigns
-  ├── parseGoogleCampaigns / parseGoogleDaily
-  ├── parseToastCSV
-  ├── parseIncentivioCustomers  →  CRMCustomerRecord[] + IncentivioMetrics
-  ├── parseMenuIntelligence
-  └── parseBudgetXLSX
-  ↓
-Store Action (src/store.ts)
-  ├── Deduplicates against existing state
-  ├── Persists to IndexedDB (async, with retry)
-  ├── Updates state slice → triggers re-render
-  ↓
-useMemo Snapshot Computation
-  ├── Aggregates all data by month
-  ├── Computes derived metrics: CAC, ROI, LTV, segment counts
-  ├── Returns MonthlySnapshot[]
-  ↓
-View Components
-  ├── Each view receives snapshots and derives local display data
-  └── ExportButton → CSV/JSON download of current filtered data
-```
+### Upload Pipeline
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/data/upload?filename=&month=` | Stage file for preview (raw body) |
+| `POST` | `/api/data/upload/confirm` | Confirm staged upload `{ uploadId }` |
+| `POST` | `/api/data/upload/cancel` | Cancel staged upload `{ uploadId }` |
+
+### Data Retrieval
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/data/state` | Full dashboard state (initial hydration) |
+| `GET` | `/api/data/snapshots` | Computed MonthlySnapshot[] |
+| `GET` | `/api/data/expenses?month=` | Expenses |
+| `GET` | `/api/data/meta-campaigns?month=` | Meta campaigns |
+| `GET` | `/api/data/google-campaigns?month=` | Google campaigns |
+| `GET` | `/api/data/google-daily?from=&to=` | Google daily metrics |
+| `GET` | `/api/data/toast-sales?month=` | Toast POS sales |
+| `GET` | `/api/data/crm-customers?month=&stage=` | CRM customer records |
+| `GET` | `/api/data/menu-intelligence?month=` | Menu intelligence items |
+| `GET` | `/api/data/incentivio-metrics` | Incentivio aggregate metrics |
+| `GET` | `/api/data/budgets` | Monthly budgets |
+| `GET` | `/api/data/uploads` | Upload history log |
+| `GET` | `/api/data/health` | Database health info |
+
+### Management
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/data/toast-sales` | Direct Toast insert `{ sales: [...] }` |
+| `PUT` | `/api/data/settings/:key` | Update setting `{ value }` |
+| `DELETE` | `/api/data/all` | Clear all database data |
+
+## SQLite Schema
+
+Database: `data/stack.db` (WAL mode, auto-created on first `npm run dev`)
+
+### Fact Tables
+
+| Table | Dedup Key (UNIQUE) | Strategy |
+|-------|-------------------|----------|
+| `fact_expense` | `(date, vendor, amount)` | `INSERT OR IGNORE` |
+| `fact_meta_campaign` | `(month, campaign_name)` | `INSERT OR IGNORE` |
+| `fact_google_campaign` | `(month, campaign_name)` | `INSERT OR IGNORE` |
+| `fact_google_daily` | `date` (PK) | `INSERT OR REPLACE` |
+| `fact_toast_sales` | `(month, location)` | `INSERT OR REPLACE` |
+| `fact_crm_customer_snapshot` | `(customer_id, snapshot_month)` | DELETE month then INSERT |
+| `fact_menu_item_snapshot` | `(item_name, snapshot_month)` | DELETE month then INSERT |
+| `fact_incentivio_metrics` | `month` (PK) | `INSERT OR REPLACE` |
+| `fact_budget` | `month` (PK) | `INSERT OR REPLACE` |
+
+### Meta Tables
+- `upload_log` — file upload history with status and dedup summary
+- `settings` — key-value app configuration
 
 ## CSV Format Reference
 
@@ -196,45 +276,19 @@ Filename contains `toast` or `productmix`
 
 Rows with same month+location in a single file are aggregated.
 
-### Incentivio Customer Export
+### Incentivio Customer Export (CRM — ~44 fields)
 
 Filename contains `customer_export`, `incentivio`, `loyalty`, `giftpool`, or `kpi`
 
-| Column | Required | Notes |
-|--------|----------|-------|
-| `Customer ID` | Yes | Filters empty rows |
-| `First Name`, `Last Name` | No | |
-| `Email`, `Phone` | No | |
-| `Guest Journey Stage` | No | Normalized to: WHALE, LOYALIST, REGULAR, ROOKIE, CHURNED, SLIDER, UNKNOWN |
-| `Reach Location` / `Location` | No | |
-| `Account Created Date` | No | ISO date |
-| `Last Visit Date` / `Last Order Date` | No | ISO date |
-| `Lifetime Spend` | No | |
-| `Lifetime Visits` | No | |
-| `Average Basket Value` | No | |
-| `Last 90 day Spend` | No | |
-| `Last 90 Days Orders` | No | |
-| `Loyalty Balance` | No | |
-| `Email Opt In` | No | "true"/"yes" → boolean |
-| `SMS Opt In` | No | "true"/"yes" → boolean |
+Parses ~44 fields per customer including: identity, journey stage, core spend/frequency, extended spend metrics (avg basket/month, purchases/week), percentiles, referrals (lifetime referrals, referral orders, referral spend), engagement flags (SMS opt, valid email), and demographics (when available).
 
 Produces both `IncentivioMetrics` (aggregated) and `CRMCustomerRecord[]` (per-customer).
 
-### Menu Intelligence
+### Menu Intelligence (~35 fields)
 
 Filename contains `menu_intelligence`
 
-| Column | Required | Notes |
-|--------|----------|-------|
-| `Item Name` | Yes | Leading apostrophes stripped |
-| `Item Score` | Yes | |
-| `Item Price ($)` | Yes | |
-| `Parent group` | No | Brackets removed |
-| `Total Sold in Last Year - All customers` | Yes | |
-| `Revenue Generated in Last Year - All Customers` | Yes | |
-| `Total Sold in Last Month - All Customers` | No | |
-| `Total Sold in Last Year - Frequent customers` | No | |
-| `Total Sold in Last Year - Infrequent customers` | No | |
+Parses ~35 fields per menu item including: score, price, parent group, item type, over/under state, volume metrics (sold last year/month by frequent/infrequent), avg orders/month, avg sold/month, penetration %, daypart breakdowns (breakfast/lunch/dinner by customer type), and computed ratios.
 
 Items are classified into BCG quadrants (star/plow_horse/puzzle/dog) based on median volume and revenue.
 
@@ -243,39 +297,6 @@ Items are classified into BCG quadrants (star/plow_horse/puzzle/dog) based on me
 Filename contains `budget` or `operating budget`
 
 Looks for a sheet named `STACK` (falls back to first sheet). Expects a row with date columns (B onwards) and a row containing "Advertising" or "Marketing". Budget amounts are split into 6 categories using default allocation percentages.
-
-## Store Actions & Deduplication
-
-| Action | Dedup Key | Strategy |
-|--------|-----------|----------|
-| `addExpenses` | `date\|vendor\|amount` | Skip duplicates |
-| `addMetaCampaigns` | `month\|campaignName` | Skip duplicates |
-| `addGoogleCampaigns` | — | Append all |
-| `addGoogleDaily` | `date` | Skip duplicates |
-| `addToastSales` | `month\|location` | API wins; same-source replaces |
-| `addIncentivio` | `month` | Replace by month |
-| `addCRMCustomers` | `snapshotMonth` | Replace all records for that month |
-| `addMenuIntelligence` | — | Full replace |
-| `addBudgets` | `month` | Replace by month |
-
-## IndexedDB Schema
-
-Database name: `stack-dashboard` (version 3)
-
-| Store | Key Path | Indexes |
-|-------|----------|---------|
-| `expenses` | `id` | `month` |
-| `budgets` | `month` | — |
-| `metaCampaigns` | auto-increment | `month` |
-| `googleCampaigns` | auto-increment | `month` |
-| `googleDaily` | auto-increment | — |
-| `toastSales` | auto-increment | `month`, `location` |
-| `toastDiscrepancies` | auto-increment | `month` |
-| `incentivio` | `month` | — |
-| `crmCustomers` | auto-increment | `snapshotMonth`, `journeyStage` |
-| `menuIntelligence` | auto-increment | — |
-| `uploadedFiles` | `id` | — |
-| `settings` | `key` | — |
 
 ## Brand Colors
 
@@ -291,4 +312,4 @@ Defined in `src/utils/theme.ts` and `src/index.css`:
 
 ## Toast POS API Integration
 
-Dev-only proxy at `/api/toast/*` via Vite middleware (`server/viteToastPlugin.ts`). Credentials loaded from `.env` (non-VITE_ prefixed, server-side only). API responses tagged with `source: 'api'` to distinguish from CSV uploads. Discrepancies between API and CSV data are tracked and surfaced in the UI.
+Dev-only proxy at `/api/toast/*` via Vite middleware (`server/viteToastPlugin.ts`). Credentials loaded from `.env` (non-VITE_ prefixed, server-side only). API data pushed directly to SQLite via `POST /api/data/toast-sales`.
