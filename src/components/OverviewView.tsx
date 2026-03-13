@@ -4,11 +4,12 @@ import { KPICard } from './KPICard';
 import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
-import type { MonthlySnapshot } from '../types';
+import type { MonthlySnapshot, CRMCustomerRecord } from '../types';
 
 interface OverviewViewProps {
   snapshots: MonthlySnapshot[];
   annualBudget: number;
+  customers: CRMCustomerRecord[];
 }
 
 function formatCurrency(n: number): string {
@@ -23,7 +24,7 @@ function formatMonth(m: string): string {
   return `${names[parseInt(month) - 1]} ${year.slice(2)}`;
 }
 
-export function OverviewView({ snapshots, annualBudget }: OverviewViewProps) {
+export function OverviewView({ snapshots, annualBudget, customers }: OverviewViewProps) {
   const latest = snapshots[snapshots.length - 1];
   const previous = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
 
@@ -33,8 +34,12 @@ export function OverviewView({ snapshots, annualBudget }: OverviewViewProps) {
     const revenueChange = previous ? ((latest.totalRevenue - previous.totalRevenue) / (previous.totalRevenue || 1)) * 100 : undefined;
     const cacChange = previous ? ((latest.estimatedCAC - previous.estimatedCAC) / (previous.estimatedCAC || 1)) * 100 : undefined;
 
-    const ytdSpend = snapshots.reduce((sum, s) => sum + s.totalSpend, 0);
-    const budgetUsed = (ytdSpend / annualBudget) * 100;
+    // YTD spend: only sum current year (based on latest snapshot's year)
+    const currentYear = latest.month.slice(0, 4);
+    const ytdSpend = snapshots
+      .filter(s => s.month.startsWith(currentYear))
+      .reduce((sum, s) => sum + s.totalSpend, 0);
+    const budgetUsed = annualBudget > 0 ? (ytdSpend / annualBudget) * 100 : 0;
 
     return { spendChange, revenueChange, cacChange, ytdSpend, budgetUsed };
   }, [snapshots, latest, previous, annualBudget]);
@@ -48,14 +53,26 @@ export function OverviewView({ snapshots, annualBudget }: OverviewViewProps) {
     }))
   , [snapshots]);
 
+  // Build month → new-customer count from CRM records (ground truth)
+  const crmNewByMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    customers.forEach(c => {
+      if (!c.accountCreatedDate || c.accountCreatedDate === '-') return;
+      const month = c.accountCreatedDate.slice(0, 7);
+      if (!month.match(/^\d{4}-\d{2}$/)) return;
+      map.set(month, (map.get(month) ?? 0) + 1);
+    });
+    return map;
+  }, [customers]);
+
   const performanceData = useMemo(() =>
     snapshots.map(s => ({
       month: formatMonth(s.month),
       metaClicks: s.metaClicks,
       googleClicks: s.googleClicks,
-      newCustomers: s.newCustomers,
+      newCustomers: crmNewByMonth.get(s.month) ?? s.newCustomers,
     }))
-  , [snapshots]);
+  , [snapshots, crmNewByMonth]);
 
   const handleExport = useCallback((format: ExportFormat) => {
     exportData(snapshots as unknown as Record<string, unknown>[], {

@@ -83,7 +83,8 @@ export function parseBudgetXLSX(buffer: Buffer): MonthlyBudget[] {
       ooh: amount * 0.10,
       software_fees: amount * 0.05,
       labor: amount * 0.20,
-      other: amount * 0.25,
+      sponsorship: amount * 0.05,
+      other: amount * 0.20,
     };
 
     budgets.push({

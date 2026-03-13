@@ -33,6 +33,19 @@ export function initializeDatabase(): void {
     }
   })();
 
+  // ── Migrations ────────────────────────────────────────────────────
+  // Add sponsorship column to fact_budget if missing (added Dec 2025)
+  const budgetCols = db.pragma('table_info(fact_budget)') as Array<{ name: string }>;
+  if (!budgetCols.some(c => c.name === 'sponsorship')) {
+    db.exec('ALTER TABLE fact_budget ADD COLUMN sponsorship REAL DEFAULT 0');
+  }
+
+  // Add conversions column to fact_google_campaign if missing (added Mar 2026)
+  const googleCols = db.pragma('table_info(fact_google_campaign)') as Array<{ name: string }>;
+  if (!googleCols.some(c => c.name === 'conversions')) {
+    db.exec('ALTER TABLE fact_google_campaign ADD COLUMN conversions REAL DEFAULT 0');
+  }
+
   const settingsCount = db.prepare(
     'SELECT COUNT(*) as count FROM settings'
   ).get() as { count: number };
@@ -173,8 +186,8 @@ export function insertGoogleCampaigns(campaigns: GoogleCampaign[], month?: strin
   const db = getDb();
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO fact_google_campaign
-    (month, campaign_name, clicks, impressions, ctr, avg_cpc, cost)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (month, campaign_name, clicks, impressions, ctr, avg_cpc, cost, conversions)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let inserted = 0;
@@ -184,7 +197,7 @@ export function insertGoogleCampaigns(campaigns: GoogleCampaign[], month?: strin
       const m = c.month || month || '';
       if (!m) continue;
       dimStmt.run(m);
-      const result = stmt.run(m, c.campaignName, c.clicks, c.impressions, c.ctr, c.avgCpc, c.cost);
+      const result = stmt.run(m, c.campaignName, c.clicks, c.impressions, c.ctr, c.avgCpc, c.cost, c.conversions);
       if (result.changes > 0) inserted++;
     }
   })();
@@ -388,8 +401,8 @@ export function insertBudgets(budgets: MonthlyBudget[]): number {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO fact_budget
-    (month, total_budget, paid_media, direct_mail_print, ooh, software_fees, labor, other)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    (month, total_budget, paid_media, direct_mail_print, ooh, software_fees, labor, sponsorship, other)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let inserted = 0;
@@ -400,7 +413,7 @@ export function insertBudgets(budgets: MonthlyBudget[]): number {
       stmt.run(
         b.month, b.totalBudget,
         b.byCategory.paid_media, b.byCategory.direct_mail_print, b.byCategory.ooh,
-        b.byCategory.software_fees, b.byCategory.labor, b.byCategory.other,
+        b.byCategory.software_fees, b.byCategory.labor, b.byCategory.sponsorship, b.byCategory.other,
       );
       inserted++;
     }
@@ -447,11 +460,12 @@ export function getGoogleCampaigns(month?: string): GoogleCampaign[] {
     : 'SELECT * FROM fact_google_campaign';
   const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
     month: string; campaign_name: string; clicks: number; impressions: number;
-    ctr: number; avg_cpc: number; cost: number;
+    ctr: number; avg_cpc: number; cost: number; conversions: number;
   }>;
   return rows.map(r => ({
     month: r.month, campaignName: r.campaign_name, clicks: r.clicks,
     impressions: r.impressions, ctr: r.ctr, avgCpc: r.avg_cpc, cost: r.cost,
+    conversions: r.conversions ?? 0,
   }));
 }
 
@@ -504,17 +518,35 @@ export function getIncentivioMetrics(): IncentivioMetrics[] {
   }));
 }
 
+/**
+ * Sum total_budget from fact_budget for a given year (e.g. '2026').
+ * Falls back to the annualBudget setting if no budget rows exist for that year.
+ */
+export function getAnnualBudgetForYear(year: string): number {
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT COALESCE(SUM(total_budget), 0) AS total
+     FROM fact_budget
+     WHERE month >= ? AND month <= ?`
+  ).get(`${year}-01`, `${year}-12`) as { total: number };
+
+  if (row.total > 0) return Math.round(row.total * 100) / 100;
+  // Fall back to legacy setting
+  return parseFloat(getSetting('annualBudget') || '533000');
+}
+
 export function getBudgets(): MonthlyBudget[] {
   const db = getDb();
   const rows = db.prepare('SELECT * FROM fact_budget ORDER BY month').all() as Array<{
     month: string; total_budget: number; paid_media: number; direct_mail_print: number;
-    ooh: number; software_fees: number; labor: number; other: number;
+    ooh: number; software_fees: number; labor: number; sponsorship: number; other: number;
   }>;
   return rows.map(r => ({
     month: r.month, totalBudget: r.total_budget,
     byCategory: {
       paid_media: r.paid_media, direct_mail_print: r.direct_mail_print,
-      ooh: r.ooh, software_fees: r.software_fees, labor: r.labor, other: r.other,
+      ooh: r.ooh, software_fees: r.software_fees, labor: r.labor,
+      sponsorship: r.sponsorship || 0, other: r.other,
     },
   }));
 }
@@ -700,7 +732,7 @@ function emptySnapshot(month: string): MonthlySnapshot {
   return {
     month,
     totalSpend: 0,
-    spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, other: 0 },
+    spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, sponsorship: 0, other: 0 },
     budgetedSpend: 0, budgetVariance: 0,
     totalRevenue: 0, revenueByLocation: {}, totalOrders: 0,
     metaImpressions: 0, metaClicks: 0, metaSpend: 0,

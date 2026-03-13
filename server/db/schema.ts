@@ -294,6 +294,7 @@ CREATE TABLE IF NOT EXISTS fact_budget (
   ooh              REAL DEFAULT 0,
   software_fees    REAL DEFAULT 0,
   labor            REAL DEFAULT 0,
+  sponsorship      REAL DEFAULT 0,
   other            REAL DEFAULT 0
 );
 `;

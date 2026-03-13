@@ -173,12 +173,12 @@ export function stageUpload(
         dedup = null; // daily uses INSERT OR REPLACE
         parsedData = { type: 'google_daily', records };
       } else {
-        // Google campaign CSVs never contain date columns —
-        // month comes from filename or user-supplied hint
-        const month = detectedMonth || '';
+        // Campaign report CSVs embed their own month from the date range header.
+        // Fall back to detectedMonth only if the parser couldn't extract one.
         const records = parseGoogleCampaigns(content);
-        // Pre-assign month to records so they're ready for insert
-        for (const r of records) { r.month = month; }
+        const month = (records.length > 0 && records[0].month) ? records[0].month : (detectedMonth || '');
+        // Ensure all records have the month set
+        for (const r of records) { if (!r.month) r.month = month; }
         recordCount = records.length;
         sampleRows = records.slice(0, 5);
         dedup = month ? analyzeGoogleDedup(records, month) : null;

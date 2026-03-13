@@ -73,7 +73,7 @@ export default function App() {
       <main className="max-w-[1600px] mx-auto px-6 py-6">
         <Suspense fallback={<TabSpinner />}>
           {activeTab === 'overview' && (
-            <OverviewView snapshots={snapshots} annualBudget={store.state.annualBudget} />
+            <OverviewView snapshots={snapshots} annualBudget={store.state.annualBudget} customers={store.state.crmCustomers} />
           )}
 
           {activeTab === 'spend' && (
@@ -88,7 +88,6 @@ export default function App() {
             <PerformanceView
               metaCampaigns={store.state.metaCampaigns}
               googleCampaigns={store.state.googleCampaigns}
-              googleDaily={store.state.googleDaily}
             />
           )}
 

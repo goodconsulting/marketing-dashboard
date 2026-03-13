@@ -7,6 +7,7 @@
 
 import Papa from 'papaparse';
 import type { DataSourceType } from '../types.ts';
+import { isGoogleCampaignReport } from './google.ts';
 
 /**
  * Detect source type from filename patterns.
@@ -14,6 +15,9 @@ import type { DataSourceType } from '../types.ts';
  */
 export function detectSourceFromFilename(filename: string): DataSourceType | null {
   const lower = filename.toLowerCase();
+
+  // Google Ads campaign report (from Google Ads UI export: "Campaign report - Month YYYY.csv")
+  if (lower.includes('campaign report')) return 'google';
 
   // Meta / Facebook campaigns
   if (lower.includes('campaign') && (
@@ -102,7 +106,11 @@ export function detectSourceType(filename: string, csvContent?: string): DataSou
   const fromFilename = detectSourceFromFilename(filename);
   if (fromFilename) return fromFilename;
 
-  if (csvContent) return detectSourceFromHeaders(csvContent);
+  if (csvContent) {
+    // Check if it's a Google Ads campaign report by content signature
+    if (isGoogleCampaignReport(csvContent)) return 'google';
+    return detectSourceFromHeaders(csvContent);
+  }
 
   // Can't detect without content — default to expenses
   return 'expenses';

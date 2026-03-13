@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
 
 interface KPICardProps {
   label: string;
@@ -7,15 +7,26 @@ interface KPICardProps {
   changeLabel?: string;
   subtitle?: string;
   color?: string;
+  tooltip?: string;    // optional Info icon with hover tooltip
 }
 
-export function KPICard({ label, value, change, changeLabel, subtitle, color = '#2D5A3D' }: KPICardProps) {
+export function KPICard({ label, value, change, changeLabel, subtitle, color = '#2D5A3D', tooltip }: KPICardProps) {
   const isPositive = change !== undefined && change > 0;
   const isNegative = change !== undefined && change < 0;
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow">
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+        {label}
+        {tooltip && (
+          <span className="relative group inline-flex">
+            <Info size={12} className="text-amber-500 cursor-help" />
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+              {tooltip}
+            </span>
+          </span>
+        )}
+      </p>
       <p className="text-2xl font-bold" style={{ color }}>{value}</p>
       {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
       {change !== undefined && (

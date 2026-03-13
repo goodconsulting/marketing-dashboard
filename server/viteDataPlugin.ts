@@ -43,6 +43,7 @@ import {
   getMenuIntelligence,
   getIncentivioMetrics,
   getBudgets,
+  getAnnualBudgetForYear,
   getSetting,
   setSetting,
   clearAllData,
@@ -132,7 +133,8 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
       const incentivioMetrics = getIncentivioMetrics();
       const budgets = getBudgets();
       const uploads = getUploadLog();
-      const annualBudget = parseFloat(getSetting('annualBudget') || '533000');
+      const currentYear = new Date().getFullYear().toString();
+      const annualBudget = getAnnualBudgetForYear(currentYear);
 
       json(res, 200, {
         snapshots,

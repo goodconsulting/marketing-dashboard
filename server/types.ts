@@ -10,7 +10,7 @@
 
 // ─── Shared primitives ──────────────────────────────────────────
 
-export type SpendCategory = 'paid_media' | 'direct_mail_print' | 'ooh' | 'software_fees' | 'labor' | 'other';
+export type SpendCategory = 'paid_media' | 'direct_mail_print' | 'ooh' | 'software_fees' | 'labor' | 'sponsorship' | 'other';
 
 export type DataSourceType =
   | 'meta'
@@ -71,6 +71,7 @@ export interface GoogleCampaign {
   ctr: number;
   avgCpc: number;
   cost: number;
+  conversions: number;
 }
 
 export interface GoogleDaily {

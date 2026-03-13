@@ -7,7 +7,7 @@ import { KPICard } from './KPICard';
 import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
-import { AlertTriangle, Users, TrendingDown, Shield } from 'lucide-react';
+import { AlertTriangle, Users, TrendingDown, Shield, Smartphone } from 'lucide-react';
 import type { CRMCustomerRecord, JourneyStage, MonthlySnapshot } from '../types';
 import { SEGMENT_COLORS } from '../utils/theme';
 
@@ -128,6 +128,87 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
       .slice(0, 20),
   [customers]);
 
+  // ─── LTV by Journey Stage: actual + projected ───
+  const RETENTION_MONTHS: Record<JourneyStage, number> = {
+    WHALE: 36, LOYALIST: 24, REGULAR: 12, ROOKIE: 6,
+    CHURNED: 0, SLIDER: 3, UNKNOWN: 6,
+  };
+
+  const ltvByStage = useMemo(() => {
+    const map = new Map<JourneyStage, { avgLTV: number; projectedLTV: number; monthlyValue: number }>();
+    segmentData.forEach(seg => {
+      const segCusts = customers.filter(c => c.journeyStage === seg.stage
+        && c.lifetimeSpend > 0 && c.lifetimeVisits > 0);
+      if (segCusts.length === 0) {
+        map.set(seg.stage, { avgLTV: 0, projectedLTV: 0, monthlyValue: 0 });
+        return;
+      }
+      const avgLTV = segCusts.reduce((s, c) => s + c.lifetimeSpend, 0) / segCusts.length;
+      const avgBasket = segCusts.reduce((s, c) => s + c.avgBasketValue, 0) / segCusts.length;
+      const avgFreq = segCusts.reduce((s, c) => s + c.purchasesPerMonth, 0) / segCusts.length;
+      const monthlyValue = avgBasket * avgFreq;
+      const projectedLTV = monthlyValue * RETENTION_MONTHS[seg.stage];
+      map.set(seg.stage, { avgLTV, projectedLTV, monthlyValue });
+    });
+    return map;
+  }, [customers, segmentData]);
+
+  // ─── Overall Projected LTV (weighted avg across all active customers) ───
+  const overallProjectedLTV = useMemo(() => {
+    const active = customers.filter(c => c.lifetimeSpend > 0 && c.lifetimeVisits > 0);
+    if (active.length === 0) return 0;
+    const total = active.reduce((sum, c) => {
+      const retention = RETENTION_MONTHS[c.journeyStage] || 6;
+      return sum + c.avgBasketValue * c.purchasesPerMonth * retention;
+    }, 0);
+    return total / active.length;
+  }, [customers]);
+
+  // ─── Avg Basket YoY (2026 signups vs 2025 signups) ───
+  const basketYoY = useMemo(() => {
+    const basket26 = customers.filter(c => c.accountCreatedDate?.startsWith('2026') && c.avgBasketValue > 0);
+    const basket25 = customers.filter(c => c.accountCreatedDate?.startsWith('2025') && c.avgBasketValue > 0);
+    const avg26 = basket26.length > 0 ? basket26.reduce((s, c) => s + c.avgBasketValue, 0) / basket26.length : 0;
+    const avg25 = basket25.length > 0 ? basket25.reduce((s, c) => s + c.avgBasketValue, 0) / basket25.length : 0;
+    const change = avg25 > 0 ? ((avg26 - avg25) / avg25) * 100 : null;
+    return { avg26, avg25, change };
+  }, [customers]);
+
+  // ─── Signup Source Distribution (active accounts only) ───
+  const SIGNUP_SOURCE_COLORS: Record<string, string> = {
+    iPhone: '#3b82f6', Android: '#10b981', Web: '#8b5cf6', Other: '#9ca3af', Unknown: '#d1d5db',
+  };
+
+  // Map raw Incentivio signupSource values to friendly labels
+  function normalizeSource(raw: string): string {
+    const lower = raw.toLowerCase();
+    if (lower.includes('iphone') || lower.includes('ios')) return 'iPhone';
+    if (lower.includes('android')) return 'Android';
+    if (lower.includes('web')) return 'Web';
+    if (lower.includes('csv') || lower.includes('batch') || lower.includes('import')) return 'Other';
+    return raw; // keep as-is if unrecognized
+  }
+
+  const signupSourceData = useMemo(() => {
+    const activeCustomers = customers.filter(c => c.lifetimeSpend > 0 || c.lifetimeVisits > 0);
+    const sourceMap = new Map<string, number>();
+    activeCustomers.forEach(c => {
+      const raw = c.signupSource?.trim() || '';
+      if (raw === '-' || raw === '') return;
+      const label = normalizeSource(raw);
+      sourceMap.set(label, (sourceMap.get(label) ?? 0) + 1);
+    });
+    const total = Array.from(sourceMap.values()).reduce((s, v) => s + v, 0);
+    return Array.from(sourceMap.entries())
+      .map(([name, count]) => ({
+        name,
+        count,
+        pct: total > 0 ? (count / total) * 100 : 0,
+        fill: SIGNUP_SOURCE_COLORS[name] || SIGNUP_SOURCE_COLORS.Unknown,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [customers]);
+
   // ─── Segment Trend (from snapshots) ───
   const segmentTrend = useMemo(() =>
     snapshots
@@ -165,18 +246,23 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard
-          label="Total Accounts"
-          value={kpis?.totalAccounts.toLocaleString() || '0'}
-          subtitle={`${kpis?.activeCustomers.toLocaleString()} active`}
+          label="Active Accounts"
+          value={kpis?.activeCustomers.toLocaleString() || '0'}
+          subtitle={`${([...snapshots].reverse().find(s => s.loyaltyAccounts > 0)?.loyaltyAccounts ?? kpis?.totalAccounts ?? 0).toLocaleString()} total (incl. ghost)`}
         />
         <KPICard
-          label="Avg LTV"
+          label="Avg Spend"
           value={formatCurrency(kpis?.avgLTV || 0)}
+          subtitle={`Projected LTV: ${formatCurrency(overallProjectedLTV)}`}
+          tooltip="Projected LTV = Avg Basket × Purchases/Mo × Retention Months (by stage)"
           color="#10b981"
         />
         <KPICard
           label="Avg Basket"
-          value={formatCurrency(kpis?.avgBasket || 0)}
+          value={formatCurrency(basketYoY.avg26 > 0 ? basketYoY.avg26 : kpis?.avgBasket || 0)}
+          subtitle={basketYoY.avg25 > 0 ? `2025: ${formatCurrency(basketYoY.avg25)}` : undefined}
+          change={basketYoY.change ?? undefined}
+          changeLabel="vs 2025"
           color="#8b5cf6"
         />
         <KPICard
@@ -326,13 +412,11 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {segmentData.map(seg => {
           const segCustomers = customers.filter(c => c.journeyStage === seg.stage);
-          const avgSpend = segCustomers.length > 0
-            ? segCustomers.reduce((s, c) => s + c.lifetimeSpend, 0) / segCustomers.length
-            : 0;
           const avgVisits = segCustomers.length > 0
             ? segCustomers.reduce((s, c) => s + c.lifetimeVisits, 0) / segCustomers.length
             : 0;
           const highRisk = segCustomers.filter(c => c.attritionRisk === 'high').length;
+          const stageLTV = ltvByStage.get(seg.stage);
 
           return (
             <div key={seg.stage} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
@@ -347,8 +431,16 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
               </div>
               <div className="space-y-1 text-xs text-gray-500">
                 <div className="flex justify-between">
-                  <span>Avg Lifetime Spend</span>
-                  <span className="font-medium text-gray-700">{formatCurrency(avgSpend)}</span>
+                  <span>Avg LTV (Actual)</span>
+                  <span className="font-medium text-gray-700">{formatCurrency(stageLTV?.avgLTV ?? 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Projected LTV</span>
+                  <span className="font-medium text-emerald-600">{formatCurrency(stageLTV?.projectedLTV ?? 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Monthly Value</span>
+                  <span className="font-medium text-blue-600">{formatCurrency(stageLTV?.monthlyValue ?? 0)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Avg Visits</span>
@@ -365,6 +457,47 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
           );
         })}
       </div>
+
+      {/* Signup Source */}
+      {signupSourceData.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Smartphone size={18} className="text-blue-500" />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">Signup Source</h3>
+              <p className="text-[10px] text-gray-400 mt-0.5">Active accounts only (excludes ghost signups)</p>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={Math.max(120, signupSourceData.length * 50)}>
+            <BarChart data={signupSourceData} layout="vertical" margin={{ left: 10, right: 30 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 12 }} />
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              <Tooltip
+                formatter={((value: number, _name: string, props: { payload: { pct: number } }) =>
+                  [`${value.toLocaleString()} (${props.payload.pct.toFixed(1)}%)`, 'Accounts']
+                ) as any}
+              />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                {signupSourceData.map((entry, idx) => (
+                  <Cell key={idx} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          {/* Summary row */}
+          <div className="grid grid-cols-3 gap-4 mt-4 pt-3 border-t border-gray-100">
+            {signupSourceData.slice(0, 3).map(src => (
+              <div key={src.name} className="text-center">
+                <p className="text-xs text-gray-500">{src.name}</p>
+                <p className="text-lg font-bold" style={{ color: src.fill }}>{src.pct.toFixed(1)}%</p>
+                <p className="text-[10px] text-gray-400">{src.count.toLocaleString()} accounts</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Attrition Risk Table */}
       {atRiskCustomers.length > 0 && (

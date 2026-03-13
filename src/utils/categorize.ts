@@ -2,6 +2,12 @@ import type { SpendCategory } from '../types';
 
 // Auto-categorize expenses by vendor name
 const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
+  // ── Specific overrides (must come BEFORE generic matches) ──
+  // "gsuite" and "workspace" must match before "google" to avoid
+  // mis-categorizing Google Workspace as Google Ads
+  'gsuite': 'software_fees',
+  'workspace': 'software_fees',
+
   // Paid Media
   'google': 'paid_media',
   'facebook': 'paid_media',
@@ -9,16 +15,21 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'meta': 'paid_media',
   'yelp': 'paid_media',
   'indeed': 'paid_media',
+  'dd marketing': 'paid_media',
+  'doordash': 'paid_media',
+  'uber eats': 'paid_media',
 
   // Direct Mail & Print
   'allegra': 'direct_mail_print',
   'vistaprint': 'direct_mail_print',
   'gotprint': 'direct_mail_print',
   'usps': 'direct_mail_print',
+  'vpc direct': 'direct_mail_print',
 
   // Out-of-Home
   'lamar': 'ooh',
   'billboard': 'ooh',
+  'valpak': 'ooh',
 
   // Software Fees
   'incentivio': 'software_fees',
@@ -27,17 +38,25 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'highlevel': 'software_fees',
   'high level': 'software_fees',
   'godaddy': 'software_fees',
-  'workspace': 'software_fees',
+  'webflow': 'software_fees',
   'bright local': 'software_fees',
   'brightlocal': 'software_fees',
+  'claude.ai': 'software_fees',
+  'claude ai': 'software_fees',
 
   // Labor
   'hoskins': 'labor',
+  'hopkins': 'labor',
   'alexis': 'labor',
   'tyce': 'labor',
 
-  // OOH (also)
-  'valpak': 'ooh',
+  // Sponsorships
+  'metro alliance': 'sponsorship',
+  'economic alliance': 'sponsorship',
+  'cedar rapids metro': 'sponsorship',
+  'giftameal': 'sponsorship',
+  'west des moines': 'sponsorship',
+  'sponsorship': 'sponsorship',
 };
 
 export function categorizeExpense(vendor: string, description: string): SpendCategory {
@@ -63,6 +82,7 @@ export const CATEGORY_LABELS: Record<SpendCategory, string> = {
   ooh: 'Out-of-Home (OOH)',
   software_fees: 'Software Fees',
   labor: 'Marketing Labor',
+  sponsorship: 'Sponsorships',
   other: 'Other',
 };
 
@@ -72,5 +92,6 @@ export const CATEGORY_COLORS: Record<SpendCategory, string> = {
   ooh: '#8b5cf6',
   software_fees: '#06b6d4',
   labor: '#10b981',
+  sponsorship: '#ec4899',
   other: '#6b7280',
 };

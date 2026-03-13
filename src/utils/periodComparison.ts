@@ -63,7 +63,7 @@ function aggregateSnapshots(snapshots: MonthlySnapshot[]): MonthlySnapshot | nul
   const agg: MonthlySnapshot = {
     month: `${snapshots[0].month} → ${snapshots[snapshots.length - 1].month}`,
     totalSpend: 0,
-    spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, other: 0 },
+    spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, sponsorship: 0, other: 0 },
     budgetedSpend: 0,
     budgetVariance: 0,
     totalRevenue: 0,

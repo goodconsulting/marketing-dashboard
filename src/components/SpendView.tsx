@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LabelList,
 } from 'recharts';
 import { CATEGORY_LABELS, CATEGORY_COLORS } from '../utils/categorize';
 import { ExportButton } from './ExportButton';
@@ -35,7 +35,7 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
   const categoryData = useMemo(() => {
     const source = selectedMonth === 'all' ? snapshots : snapshots.filter(s => s.month === selectedMonth);
     const totals: Record<SpendCategory, number> = {
-      paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, other: 0,
+      paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, sponsorship: 0, other: 0,
     };
     source.forEach(s => {
       for (const cat of Object.keys(totals) as SpendCategory[]) {
@@ -59,6 +59,7 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
       ...Object.fromEntries(
         (Object.keys(CATEGORY_LABELS) as SpendCategory[]).map(cat => [cat, Math.round(s.spendByCategory[cat] || 0)])
       ),
+      total: Math.round(s.totalSpend),
       budget: Math.round(s.budgetedSpend),
     }))
   , [snapshots]);
@@ -173,13 +174,13 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
                 outerRadius={100}
                 paddingAngle={3}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
               >
                 {categoryData.map((entry, i) => (
                   <Cell key={i} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Tooltip formatter={(v: number | undefined) => formatCurrency(v ?? 0)} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -209,16 +210,47 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
       {/* Monthly Stacked Bar */}
       <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Monthly Spend by Category</h3>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={monthlyStackData}>
+        <ResponsiveContainer width="100%" height={360}>
+          <BarChart data={monthlyStackData} margin={{ top: 24, right: 10, left: 10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => formatCurrency(v)} />
-            <Tooltip formatter={(v: number) => formatCurrency(v)} />
+            <Tooltip
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                const totalVal = payload.find(p => p.dataKey === 'total')?.value as number | undefined;
+                const categories = payload.filter(p => p.dataKey !== 'total' && (p.value as number) > 0);
+                return (
+                  <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm">
+                    <p className="font-semibold text-gray-800 mb-1.5">{label}</p>
+                    {totalVal != null && (
+                      <p className="font-bold text-gray-900 border-b border-gray-100 pb-1.5 mb-1.5">
+                        Total: {formatCurrency(totalVal)}
+                      </p>
+                    )}
+                    {categories.map((entry, i) => (
+                      <p key={i} className="flex justify-between gap-4" style={{ color: entry.color }}>
+                        <span>{entry.name}</span>
+                        <span className="font-medium">{formatCurrency(entry.value as number)}</span>
+                      </p>
+                    ))}
+                  </div>
+                );
+              }}
+            />
             <Legend />
             {(Object.keys(CATEGORY_LABELS) as SpendCategory[]).map(cat => (
               <Bar key={cat} dataKey={cat} name={CATEGORY_LABELS[cat]} stackId="spend" fill={CATEGORY_COLORS[cat]} />
             ))}
+            {/* Invisible bar that carries the total label above the stack */}
+            <Bar dataKey="total" stackId="total" fill="transparent" legendType="none" isAnimationActive={false}>
+              <LabelList
+                dataKey="total"
+                position="top"
+                formatter={(v: unknown) => formatCurrency(Number(v))}
+                style={{ fontSize: 11, fontWeight: 600, fill: '#374151' }}
+              />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
