@@ -31,6 +31,7 @@ function getInitialState(): DashboardState {
     ampCampaigns: [],
     billboardData: [],
     otherCampaigns: [],
+    stageTransitions: [],
   };
 }
 
@@ -61,6 +62,7 @@ export function useDashboardStore() {
         ampCampaigns: data.ampCampaigns || [],
         billboardData: data.billboardData || [],
         otherCampaigns: data.otherCampaigns || [],
+        stageTransitions: data.stageTransitions || [],
         uploadedFiles: data.uploads,
         annualBudget: data.annualBudget || 533000,
         snapshots: data.snapshots,
@@ -97,6 +99,7 @@ export function useDashboardStore() {
             ampCampaigns: data.ampCampaigns || [],
             billboardData: data.billboardData || [],
             otherCampaigns: data.otherCampaigns || [],
+            stageTransitions: data.stageTransitions || [],
             uploadedFiles: data.uploads,
             annualBudget: data.annualBudget || 533000,
             snapshots: data.snapshots,

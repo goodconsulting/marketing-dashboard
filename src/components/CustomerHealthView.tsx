@@ -8,12 +8,151 @@ import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
 import { AlertTriangle, Users, TrendingDown, Shield, Smartphone } from 'lucide-react';
-import type { CRMCustomerRecord, JourneyStage, MonthlySnapshot } from '../types';
+import type { CRMCustomerRecord, JourneyStage, MonthlySnapshot, StageTransition } from '../types';
 import { SEGMENT_COLORS } from '../utils/theme';
 
 interface CustomerHealthViewProps {
   customers: CRMCustomerRecord[];
   snapshots: MonthlySnapshot[];
+  stageTransitions: StageTransition[];
+}
+
+const STAGE_ORDER = ['UNKNOWN', 'SLIDER', 'ROOKIE', 'REGULAR', 'LOYALIST', 'WHALE', 'CHURNED'];
+
+function JourneyAnalytics({ transitions }: { transitions: StageTransition[] }) {
+  const dwellByStage = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const t of transitions) {
+      if (t.direction === 'first_seen' || t.daysInFromStage === null) continue;
+      if (!map.has(t.fromStage)) map.set(t.fromStage, []);
+      map.get(t.fromStage)!.push(t.daysInFromStage);
+    }
+    return Array.from(map.entries()).map(([stage, days]) => {
+      const sorted = [...days].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+      return { stage, median, n: days.length };
+    }).sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage));
+  }, [transitions]);
+
+  const economicsByStage = useMemo(() => {
+    const map = new Map<string, { spendSum: number; visitsSum: number; n: number }>();
+    for (const t of transitions) {
+      if (t.direction === 'first_seen' || t.spendInFromStage === null) continue;
+      const agg = map.get(t.fromStage) ?? { spendSum: 0, visitsSum: 0, n: 0 };
+      agg.spendSum += t.spendInFromStage;
+      agg.visitsSum += t.visitsInFromStage || 0;
+      agg.n++;
+      map.set(t.fromStage, agg);
+    }
+    return Array.from(map.entries()).map(([stage, a]) => ({
+      stage, avgSpend: a.n > 0 ? a.spendSum / a.n : 0, avgVisits: a.n > 0 ? a.visitsSum / a.n : 0, n: a.n,
+    })).sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage));
+  }, [transitions]);
+
+  const matrix = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of transitions) {
+      if (t.direction === 'first_seen') continue;
+      const k = `${t.fromStage}\u2192${t.toStage}`;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [transitions]);
+
+  const recent = useMemo(() =>
+    transitions.filter(t => t.direction !== 'first_seen').slice(0, 20),
+  [transitions]);
+
+  if (transitions.length === 0) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-900">
+        <div className="font-semibold mb-1">Journey Analytics: no data yet</div>
+        Run <code className="bg-amber-100 px-1 rounded">node scripts/backfill-stage-transitions.cjs</code> to populate.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-700">Journey Analytics</h3>
+        <span className="text-xs text-gray-400">
+          Based on {new Set(transitions.map(t => t.toSnapshot)).size} snapshots · confidence improves over time
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Stage Dwell Time (median days)</div>
+          {dwellByStage.map(d => (
+            <div key={d.stage} className="flex items-center gap-3 py-1.5">
+              <div className="w-20 text-sm text-gray-700">{d.stage}</div>
+              <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                <div className="bg-[#2D5A3D] h-full" style={{ width: `${Math.min(d.median, 180) / 180 * 100}%` }} />
+              </div>
+              <div className="w-20 text-sm text-gray-700 text-right">
+                {d.median}d <span className="text-gray-400">(n={d.n})</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Stage Economics (avg per customer)</div>
+          <table className="w-full text-sm">
+            <thead><tr className="text-xs text-gray-500 uppercase">
+              <th className="text-left">Stage</th><th className="text-right">Avg Spend</th><th className="text-right">Avg Visits</th><th className="text-right">n</th>
+            </tr></thead>
+            <tbody>
+              {economicsByStage.map(e => (
+                <tr key={e.stage} className="border-t border-gray-50">
+                  <td className="py-1.5 text-gray-700">{e.stage}</td>
+                  <td className="py-1.5 text-right">${e.avgSpend.toFixed(2)}</td>
+                  <td className="py-1.5 text-right">{e.avgVisits.toFixed(1)}</td>
+                  <td className="py-1.5 text-right text-gray-400">{e.n}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Transition Matrix (top flows)</div>
+          <table className="w-full text-sm">
+            <tbody>
+              {matrix.slice(0, 10).map(([k, n]) => (
+                <tr key={k} className="border-t border-gray-50">
+                  <td className="py-1.5 text-gray-700">{k}</td>
+                  <td className="py-1.5 text-right font-mono text-gray-900">{n}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm overflow-x-auto">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Recent Transitions</div>
+          <table className="w-full text-xs">
+            <thead><tr className="text-gray-500">
+              <th className="text-left">Customer</th><th className="text-left">Change</th><th className="text-right">Spend</th><th className="text-right">Est. Date</th>
+            </tr></thead>
+            <tbody>
+              {recent.map((t, i) => (
+                <tr key={i} className="border-t border-gray-50">
+                  <td className="py-1 font-mono text-gray-500">{t.customerId.slice(0, 8)}</td>
+                  <td className="py-1 text-gray-700">{t.fromStage} &rarr; {t.toStage}</td>
+                  <td className="py-1 text-right">${(t.spendInFromStage ?? 0).toFixed(0)}</td>
+                  <td className="py-1 text-right text-gray-500">{t.estimatedTransitionDate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const SEGMENT_LABELS: Record<JourneyStage, string> = {
@@ -38,7 +177,7 @@ function formatMonth(m: string): string {
   return `${names[parseInt(month) - 1]} ${year.slice(2)}`;
 }
 
-export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewProps) {
+export function CustomerHealthView({ customers, snapshots, stageTransitions }: CustomerHealthViewProps) {
   // ─── Segment Distribution ───
   const segmentData = useMemo(() => {
     const counts: Record<JourneyStage, number> = {
@@ -539,6 +678,9 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
           );
         })}
       </div>
+
+      {/* Journey Analytics — dwell time, stage economics, transition matrix, recent transitions */}
+      <JourneyAnalytics transitions={stageTransitions} />
 
       {/* Signup Source */}
       {signupSourceData.length > 0 && (
