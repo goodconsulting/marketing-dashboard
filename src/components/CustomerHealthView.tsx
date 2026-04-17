@@ -142,7 +142,7 @@ function JourneyAnalytics({ transitions }: { transitions: StageTransition[] }) {
               {recent.map((t, i) => (
                 <tr key={i} className="border-t border-gray-50">
                   <td className="py-1 font-mono text-gray-500">{t.customerId.slice(0, 8)}</td>
-                  <td className="py-1 text-gray-700">{t.fromStage} \u2192 {t.toStage}</td>
+                  <td className="py-1 text-gray-700">{t.fromStage} &rarr; {t.toStage}</td>
                   <td className="py-1 text-right">${(t.spendInFromStage ?? 0).toFixed(0)}</td>
                   <td className="py-1 text-right text-gray-500">{t.estimatedTransitionDate}</td>
                 </tr>
