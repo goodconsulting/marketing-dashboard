@@ -1,8 +1,15 @@
 /**
- * Ingest April 2026 CRM export into fact_crm_customer_snapshot AND
- * derive new transitions for the prev-snapshot → 2026-04 pair.
+ * Ingest an Incentivio Customer Export CSV into fact_crm_customer_snapshot
+ * for a specific snapshot_month, then derive transitions for the
+ * prev-snapshot → this-snapshot pair.
  *
- * Usage: node scripts/ingest-april-2026-crm.cjs
+ * Usage:
+ *   node scripts/ingest-april-2026-crm.cjs [csvPath] [snapshotMonth]
+ *
+ * Defaults (no args): the original April 2026 export ingested as 2026-04.
+ *
+ * Both args are optional — if omitted, falls back to the April defaults
+ * (preserves the original one-shot behavior).
  */
 const path = require('path');
 const fs = require('fs');
@@ -13,9 +20,12 @@ const {
   computeDaysInStage,
 } = require('../server/lib/stage-transitions.cjs');
 
-const CSV_PATH = '/Users/carsongoodale/Desktop/Stack/Customer_Data/stackwellnesscafe_Customer_Export_2026_04_17_UTC_03_42_05_4ba9c50f-ac40-43e6-9521-8eb4ef7263ca_.csv';
+const DEFAULT_CSV = '/Users/carsongoodale/Desktop/Stack/Customer_Data/stackwellnesscafe_Customer_Export_2026_04_17_UTC_03_42_05_4ba9c50f-ac40-43e6-9521-8eb4ef7263ca_.csv';
+const CSV_PATH = process.argv[2] || DEFAULT_CSV;
+const SNAPSHOT_MONTH = process.argv[3] || '2026-04';
 const DB_PATH = path.join(__dirname, '..', 'data', 'stack.db');
-const SNAPSHOT_MONTH = '2026-04';
+console.log(`CSV:      ${CSV_PATH}`);
+console.log(`Snapshot: ${SNAPSHOT_MONTH}`);
 
 // Parse CSV
 const csv = fs.readFileSync(CSV_PATH, 'utf8');
