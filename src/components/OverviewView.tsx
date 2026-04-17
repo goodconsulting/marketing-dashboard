@@ -174,10 +174,13 @@ export function OverviewView({ snapshots, annualBudget, customers, ampCampaigns 
     // Stage 4: Active Customers (cumulative — customers with lifetime_spend > 0)
     const activeCustomers = customers.filter(c => c.lifetimeSpend > 0).length;
 
-    // Stage 5: Loyal / Repeat
-    const loyalStages = new Set(['LOYALIST', 'WHALE', 'REGULAR']);
+    // Stage 5: Loyal / Repeat — defined strictly as LOYALIST + WHALE stages
+    // (moved to stage-based after April 2026 snapshot. Prior definition
+    // mixed 3+ visits OR REGULAR/LOYALIST/WHALE which double-counted
+    // customers who were Regular but had 3+ visits; cleaner to use the
+    // Incentivio ladder directly.)
     const loyal = customers.filter(c =>
-      c.lifetimeVisits >= 3 || loyalStages.has(c.journeyStage)
+      c.journeyStage === 'LOYALIST' || c.journeyStage === 'WHALE'
     ).length;
 
     return {
@@ -187,7 +190,7 @@ export function OverviewView({ snapshots, annualBudget, customers, ampCampaigns 
         { name: 'Clicks / Engagement', count: clicks, tooltip: 'Total engagement actions: Meta link clicks + Google clicks + AMP email clicks + OneLink QR scans', channels: clickChannels },
         { name: 'App Signups', count: signups, tooltip: 'New CRM accounts created (Incentivio) — customers who downloaded the app and registered' },
         { name: 'Active Customers', count: activeCustomers, tooltip: 'Customers with at least 1 purchase (lifetime spend > $0) — cumulative active base' },
-        { name: 'Loyal / Repeat', count: loyal, tooltip: 'Customers with 3+ lifetime visits OR classified as Loyalist, Whale, or Regular in CRM segmentation' },
+        { name: 'Loyal / Repeat', count: loyal, tooltip: 'Customers classified as LOYALIST or WHALE in Incentivio journey stage' },
       ],
     };
   }, [snapshots, latest, funnelGranularity, customers, crmNewByMonth, billboardData, ampCampaigns, onelinkData]);

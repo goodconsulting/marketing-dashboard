@@ -8,7 +8,7 @@ import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
 import { Users, Heart, TrendingUp, TrendingDown, Minus, Info, Tag, ArrowUpDown } from 'lucide-react';
-import type { MonthlySnapshot, CRMCustomerRecord, SpendCategory, DiscountSummary } from '../types';
+import type { MonthlySnapshot, CRMCustomerRecord, SpendCategory, DiscountSummary, StageTransition } from '../types';
 import { ReferenceLine } from 'recharts';
 
 interface AttributionViewProps {
@@ -16,6 +16,7 @@ interface AttributionViewProps {
   customers: CRMCustomerRecord[];
   allCustomers: CRMCustomerRecord[];  // includes ghost accounts (0-activity signups)
   discountSummary: DiscountSummary[];
+  stageTransitions: StageTransition[];
 }
 
 function formatCurrency(n: number): string {
@@ -180,7 +181,7 @@ function LTVCACTooltip({ active, payload, label }: any) {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export function AttributionView({ snapshots, customers, allCustomers, discountSummary }: AttributionViewProps) {
+export function AttributionView({ snapshots, customers, allCustomers, discountSummary, stageTransitions }: AttributionViewProps) {
   const latest = snapshots[snapshots.length - 1];
   const previous = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
 
@@ -203,21 +204,49 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
     return active.reduce((sum, c) => sum + c.lifetimeSpend, 0) / active.length;
   }, [customers]);
 
-  // Projected LTV: basket × freq × retention months (weighted avg across stages)
-  const RETENTION_MONTHS_ATTR: Record<string, number> = {
+  // Projected LTV: basket × freq × retention months (weighted avg across stages).
+  // Hardcoded fallbacks — used when observed sample size is below per-stage threshold.
+  const HARDCODED_RETENTION_MONTHS: Record<string, number> = {
     WHALE: 36, LOYALIST: 24, REGULAR: 12, ROOKIE: 6,
     CHURNED: 0, SLIDER: 3, UNKNOWN: 6,
   };
+
+  // Per-stage minimum sample size for trusting the observed median dwell time.
+  // Thresholds reflect how rare each stage is (WHALE is naturally tiny population).
+  const RETENTION_SAMPLE_THRESHOLDS: Record<string, number> = {
+    ROOKIE: 200, REGULAR: 100, LOYALIST: 50, WHALE: 20,
+    CHURNED: 0, SLIDER: 0, UNKNOWN: 0,
+  };
+
+  // Observed retention (median days-in-stage → months) with sample-size-gated fallback.
+  const observedRetention = useMemo(() => {
+    const out: Record<string, { months: number; n: number; source: 'observed' | 'fallback' }> = {};
+    for (const stage of Object.keys(HARDCODED_RETENTION_MONTHS)) {
+      const samples = stageTransitions
+        .filter(t => t.fromStage === stage && t.daysInFromStage !== null && t.direction !== 'first_seen')
+        .map(t => t.daysInFromStage as number);
+      const n = samples.length;
+      const threshold = RETENTION_SAMPLE_THRESHOLDS[stage] ?? 100;
+      if (threshold > 0 && n >= threshold) {
+        samples.sort((a, b) => a - b);
+        const medianDays = samples[Math.floor(n / 2)];
+        out[stage] = { months: medianDays / 30, n, source: 'observed' };
+      } else {
+        out[stage] = { months: HARDCODED_RETENTION_MONTHS[stage], n, source: 'fallback' };
+      }
+    }
+    return out;
+  }, [stageTransitions]);
 
   const overallProjectedLTV = useMemo(() => {
     const active = customers.filter(c => c.lifetimeSpend > 0 && c.lifetimeVisits > 0);
     if (active.length === 0) return 0;
     const total = active.reduce((sum, c) => {
-      const retention = RETENTION_MONTHS_ATTR[c.journeyStage] || 6;
+      const retention = observedRetention[c.journeyStage]?.months ?? 6;
       return sum + c.avgBasketValue * c.purchasesPerMonth * retention;
     }, 0);
     return total / active.length;
-  }, [customers]);
+  }, [customers, observedRetention]);
 
   const cacTrend = useMemo(() =>
     snapshots
@@ -822,8 +851,15 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
           LTV vs CAC
           {ltvData.some(d => d.isEstimated) && <EstimatedBadge />}
         </h3>
-        <p className="text-xs text-gray-400 mb-4">
+        <p className="text-xs text-gray-400 mb-1">
           Estimated LTV = Avg Basket &times; Purchases/Mo &times; Retention Months (by stage) &middot; Weighted avg across {customers.filter(c => c.lifetimeVisits > 0).length.toLocaleString()} active accounts
+        </p>
+        <p className="text-[10px] text-gray-400 mb-4">
+          Retention: {['ROOKIE','REGULAR','LOYALIST','WHALE'].map(s => {
+            const r = observedRetention[s];
+            if (!r) return null;
+            return `${s}: ${r.months.toFixed(1)}mo ${r.source === 'observed' ? `(observed, n=${r.n})` : '(fallback)'}`;
+          }).filter(Boolean).join(' · ')}
         </p>
         <ResponsiveContainer width="100%" height={340}>
           <ComposedChart data={ltvData}>

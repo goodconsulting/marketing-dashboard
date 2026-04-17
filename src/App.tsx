@@ -96,7 +96,7 @@ export default function App() {
           )}
 
           {activeTab === 'attribution' && (
-            <AttributionView snapshots={snapshots} customers={store.state.crmCustomers} allCustomers={store.state.allCrmCustomers} discountSummary={store.state.discountSummary} />
+            <AttributionView snapshots={snapshots} customers={store.state.crmCustomers} allCustomers={store.state.allCrmCustomers} discountSummary={store.state.discountSummary} stageTransitions={store.state.stageTransitions} />
           )}
 
           {activeTab === 'customers' && (
