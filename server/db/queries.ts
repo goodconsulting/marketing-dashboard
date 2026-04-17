@@ -47,6 +47,22 @@ export function initializeDatabase(): void {
     db.exec('ALTER TABLE fact_google_campaign ADD COLUMN conversions REAL DEFAULT 0');
   }
 
+  // Migration guard: warn if CRM snapshots exist but stage transitions haven't
+  // been derived. The backfill is a separate script (not auto-run on startup)
+  // to keep ingest intentional; this warning tells the operator what to do.
+  const snapMonths = db.prepare(
+    "SELECT COUNT(DISTINCT snapshot_month) AS n FROM fact_crm_customer_snapshot WHERE snapshot_month != '2025-08'"
+  ).get() as { n: number };
+  const transitionCount = db.prepare(
+    'SELECT COUNT(*) AS n FROM fact_stage_transition'
+  ).get() as { n: number };
+
+  if (snapMonths.n >= 2 && transitionCount.n === 0) {
+    console.warn('\u26a0\ufe0f  fact_stage_transition is empty but ' + snapMonths.n + ' CRM snapshots exist.');
+    console.warn('    Run: node scripts/backfill-stage-transitions.cjs');
+    console.warn('    Until backfill runs, Journey Analytics panels will show empty.');
+  }
+
   const settingsCount = db.prepare(
     'SELECT COUNT(*) as count FROM settings'
   ).get() as { count: number };
