@@ -31,30 +31,67 @@ function toNum(v) {
   return isNaN(n) ? 0 : n;
 }
 
-// Transform to snapshot schema
+// Transform to snapshot schema. Field coverage mirrors server/parsers/crm.ts
+// (the normal CRM parser) so the April snapshot has the same columns populated
+// as prior months — critical for LTV calc which needs purchases_per_month +
+// avg_basket_value together. Earlier rev of this script omitted many fields
+// and caused projected LTV = 0 (ROI flipped negative) in the dashboard.
+const boolTxt = (v) => (v === 'TRUE' || v === 'true' || v === '1' || v === 'YES' || v === 'Yes') ? 1 : 0;
+const strOrEmpty = (v) => (v && v !== '-') ? String(v) : '';
 const snapshotRows = parsed.data.map(r => ({
   customer_id: r['Customer ID'],
   snapshot_month: SNAPSHOT_MONTH,
-  first_name: r['First Name'] || '',
-  last_name: r['Last Name'] || '',
-  email: r['Email Address'] || '',
+  first_name: strOrEmpty(r['First Name']),
+  last_name: strOrEmpty(r['Last Name']),
+  email: strOrEmpty(r['Email Address']),
+  phone: strOrEmpty(r['Phone']),
   journey_stage: (r['Guest Journey Stage'] && r['Guest Journey Stage'] !== '-') ? r['Guest Journey Stage'] : 'UNKNOWN',
   attrition_risk: r['Attrition Risk'] || 'unknown',
-  reach_location: r['Reach Location'] || '',
+  reach_location: strOrEmpty(r['Reach Location']),
+  // Core spend/frequency
   lifetime_spend: toNum(r['Lifetime Spend']),
   lifetime_visits: toNum(r['Lifetime Visits']),
   avg_basket_value: toNum(r['Average Basket Value']),
+  avg_basket_value_per_month: toNum(r['Average Basket Value Per Month']),
+  purchases_per_month: toNum(r['Purchases per Month']),
+  avg_purchases_per_week: toNum(r['Average Purchases Per Week']),
+  // Last 90 day window
   last_90_days_spend: toNum(r['Last 90 day Spend']),
   last_90_days_orders: toNum(r['Last 90 day Orders']),
+  last_90_day_monthly_spend: toNum(r['Last 90 day monthly Spend']),
+  last_90_day_avg_weekly_spend: toNum(r['Last 90 day average weekly Spend']),
+  // Year window
   last_year_spend: toNum(r['Last year Spend']),
   last_year_orders: toNum(r['Last year Orders']),
+  // Percentiles
+  days_since_last_visit_pct: toNum(r['Days Since Last Purchase Percentile']),
+  lifetime_aov_percentile: toNum(r['Lifetime Average Order Value Percentile']),
+  purchases_per_month_pct: toNum(r['Purchases per Month Percentile']),
+  // Referrals
+  lifetime_referrals: toNum(r['Lifetime Referrals']),
+  referrals_who_ordered: toNum(r['No of Referrals who Ordered']),
+  orders_from_referrals: toNum(r['No of Orders from Referrals']),
+  total_spend_from_referrals: toNum(r['Total Spend from Referrals']),
+  unique_referral_code: strOrEmpty(r['Unique Referral Code']),
+  // Engagement flags
+  sms_order_notification_opt: boolTxt(r['SMS Order Notification Opt in']),
+  valid_email: boolTxt(r['Valid Email?']),
+  email_opt_in: boolTxt(r['Email Opt In']),
+  sms_opt_in: boolTxt(r['SMS Marketing Opt in']),
+  // Demographics
+  date_of_birth: strOrEmpty(r['Date of Birth']),
+  age: toNum(r['AGE']),
+  gender: strOrEmpty(r['GENDER']),
+  // Loyalty + weekly spend
   current_loyalty_balance: toNum(r['Current Loyalty Balance']),
-  account_created_date: r['Account Created Date'] || '',
-  last_visit_date: r['Last Purchase Date'] || '',
+  avg_weekly_spend: toNum(r['AVERAGE_WEEKLY_SPEND']),
+  // Dates
+  account_created_date: strOrEmpty(r['Account Created Date']),
+  last_visit_date: strOrEmpty(r['Last Purchase Date']),
   days_since_signup: toNum(r['Days since Signup']),
   days_since_last_visit: toNum(r['Days Since Last Purchase']),
-  user_affiliation: r['User Affiliation'] || '',
-  signup_source: r['Signup Source'] || '',
+  user_affiliation: strOrEmpty(r['User Affiliation']),
+  signup_source: strOrEmpty(r['Signup Source']),
 })).filter(r => r.customer_id);
 
 console.log(`Transformed ${snapshotRows.length} valid customer rows`);
@@ -66,25 +103,38 @@ db.prepare('DELETE FROM fact_crm_customer_snapshot WHERE snapshot_month = ?').ru
 
 const insertSnap = db.prepare(`
   INSERT INTO fact_crm_customer_snapshot
-  (customer_id, snapshot_month, first_name, last_name, email, journey_stage, attrition_risk,
-   reach_location, lifetime_spend, lifetime_visits, avg_basket_value, last_90_days_spend,
-   last_90_days_orders, last_year_spend, last_year_orders, current_loyalty_balance,
+  (customer_id, snapshot_month, first_name, last_name, email, phone, journey_stage, attrition_risk,
+   reach_location, lifetime_spend, lifetime_visits, avg_basket_value,
+   avg_basket_value_per_month, purchases_per_month, avg_purchases_per_week,
+   last_90_days_spend, last_90_days_orders, last_90_day_monthly_spend, last_90_day_avg_weekly_spend,
+   last_year_spend, last_year_orders,
+   days_since_last_visit_pct, lifetime_aov_percentile, purchases_per_month_pct,
+   lifetime_referrals, referrals_who_ordered, orders_from_referrals, total_spend_from_referrals,
+   unique_referral_code,
+   sms_order_notification_opt, valid_email, email_opt_in, sms_opt_in,
+   date_of_birth, age, gender,
+   current_loyalty_balance, avg_weekly_spend,
    account_created_date, last_visit_date, days_since_signup, days_since_last_visit,
    user_affiliation, signup_source)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 db.transaction(() => {
   for (const r of snapshotRows) {
     insertSnap.run(
-      r.customer_id, r.snapshot_month, r.first_name, r.last_name, r.email,
+      r.customer_id, r.snapshot_month, r.first_name, r.last_name, r.email, r.phone,
       r.journey_stage, r.attrition_risk, r.reach_location,
       r.lifetime_spend, r.lifetime_visits, r.avg_basket_value,
-      r.last_90_days_spend, r.last_90_days_orders,
+      r.avg_basket_value_per_month, r.purchases_per_month, r.avg_purchases_per_week,
+      r.last_90_days_spend, r.last_90_days_orders, r.last_90_day_monthly_spend, r.last_90_day_avg_weekly_spend,
       r.last_year_spend, r.last_year_orders,
-      r.current_loyalty_balance,
-      r.account_created_date, r.last_visit_date,
-      r.days_since_signup, r.days_since_last_visit,
+      r.days_since_last_visit_pct, r.lifetime_aov_percentile, r.purchases_per_month_pct,
+      r.lifetime_referrals, r.referrals_who_ordered, r.orders_from_referrals, r.total_spend_from_referrals,
+      r.unique_referral_code,
+      r.sms_order_notification_opt, r.valid_email, r.email_opt_in, r.sms_opt_in,
+      r.date_of_birth, r.age, r.gender,
+      r.current_loyalty_balance, r.avg_weekly_spend,
+      r.account_created_date, r.last_visit_date, r.days_since_signup, r.days_since_last_visit,
       r.user_affiliation, r.signup_source,
     );
   }
