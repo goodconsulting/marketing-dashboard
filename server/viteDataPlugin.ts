@@ -50,6 +50,9 @@ import {
   getAmpCampaigns,
   getBillboardMonthly,
   getOtherCampaigns,
+  getStageTransitions,
+  getStageTransitionMatrix,
+  getStageStats,
   getSetting,
   setSetting,
   clearAllData,
@@ -144,6 +147,7 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
       const ampCampaigns = getAmpCampaigns();
       const billboardData = getBillboardMonthly();
       const otherCampaigns = getOtherCampaigns();
+      const stageTransitions = getStageTransitions(5000);
       const uploads = getUploadLog();
       const currentYear = new Date().getFullYear().toString();
       const annualBudget = getAnnualBudgetForYear(currentYear);
@@ -165,6 +169,7 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
         ampCampaigns,
         billboardData,
         otherCampaigns,
+        stageTransitions,
         uploads,
         annualBudget,
       });
@@ -255,6 +260,23 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
     // ── Other Campaigns (Yelp, TikTok, etc.) ─────────────────────
     if (path === '/api/data/other-campaigns') {
       json(res, 200, getOtherCampaigns(query.get('month') || undefined));
+      return;
+    }
+
+    // ── Stage Transitions ────────────────────────────────────────
+    if (path === '/api/data/stage-transitions') {
+      const limit = parseInt(query.get('limit') || '5000', 10);
+      json(res, 200, getStageTransitions(limit));
+      return;
+    }
+
+    if (path === '/api/data/stage-transition-matrix') {
+      json(res, 200, getStageTransitionMatrix());
+      return;
+    }
+
+    if (path === '/api/data/stage-stats') {
+      json(res, 200, getStageStats());
       return;
     }
 
