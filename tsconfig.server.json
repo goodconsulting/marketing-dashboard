@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "outDir": "./dist-server",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "declaration": false,
+    "sourceMap": false,
+    "noEmit": false,
+    "rootDir": "./server",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["server/**/*.ts"],
+  "exclude": ["server/viteDataPlugin.ts"]
+}

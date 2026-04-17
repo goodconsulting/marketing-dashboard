@@ -120,7 +120,7 @@ export interface StoreSales {
   foodSales?: number;
   smoothieSales?: number;
   retailSales?: number;
-  source?: 'clover' | 'toast' | 'clover+toast';
+  source?: 'clover' | 'toast' | 'clover+toast' | 'csv';
   syncedAt?: string;
 }
 

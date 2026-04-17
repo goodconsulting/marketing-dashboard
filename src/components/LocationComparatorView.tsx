@@ -54,7 +54,7 @@ function normalizeCRMLocation(reachLoc: string, storeLocs: string[]): string {
   return match || reachLoc;
 }
 
-export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: LocationComparatorViewProps) {
+export function LocationComparatorView({ crmCustomers, toastSales }: LocationComparatorViewProps) {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
 
@@ -312,7 +312,7 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v)} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Tooltip formatter={(v) => formatCurrency(Number(v) || 0)} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="revenue" name="Revenue" radius={[4, 4, 0, 0]}>
                 {revenueChartData.map((entry, idx) => (
@@ -363,8 +363,20 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v)} />
-              <Tooltip formatter={(v: number, name: string) => name.startsWith('_') ? [null, null] : [formatCurrency(v), name]} />
-              <Legend wrapperStyle={{ fontSize: 11 }} payload={allLocations.map(loc => ({ value: loc, type: 'square' as const, color: LOCATION_COLORS[loc] || DEFAULT_LOCATION_COLOR }))} />
+              <Tooltip formatter={(v, name) => typeof name === 'string' && name.startsWith('_') ? [null, null] : [formatCurrency(Number(v) || 0), name as string]} />
+              <Legend
+                wrapperStyle={{ fontSize: 11 }}
+                content={() => (
+                  <ul style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12, listStyle: 'none', padding: 0, margin: 0 }}>
+                    {allLocations.map(loc => (
+                      <li key={loc} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ display: 'inline-block', width: 10, height: 10, background: LOCATION_COLORS[loc] || DEFAULT_LOCATION_COLOR }} />
+                        <span>{loc}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              />
               {allLocations.map((loc, idx) => {
                 const isLast = idx === allLocations.length - 1;
                 return (
@@ -379,13 +391,16 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
                       <LabelList
                         dataKey="_momPct"
                         position="top"
-                        content={({ x, y, width, value }: { x?: number; y?: number; width?: number; value?: unknown }) => {
+                        content={({ x, y, width, value }: { x?: string | number; y?: string | number; width?: string | number; value?: unknown }) => {
                           if (value === null || value === undefined) return null;
                           const n = Number(value);
                           const color = n >= 0 ? '#059669' : '#dc2626';
                           const label = `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+                          const xn = typeof x === 'number' ? x : Number(x) || 0;
+                          const yn = typeof y === 'number' ? y : Number(y) || 0;
+                          const wn = typeof width === 'number' ? width : Number(width) || 0;
                           return (
-                            <text x={(x || 0) + (width || 0) / 2} y={(y || 0) - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
+                            <text x={xn + wn / 2} y={yn - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
                               {label}
                             </text>
                           );

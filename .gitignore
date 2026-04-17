@@ -28,3 +28,6 @@ data/
 # Git worktrees
 .worktrees/
 
+# Production build artifacts
+dist-server/
+

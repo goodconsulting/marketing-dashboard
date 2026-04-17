@@ -798,13 +798,16 @@ export function CustomerHealthView({ customers, snapshots, stageTransitions }: C
                         }}
                         style={{ fontSize: 10, fontWeight: 700 }}
                         fill="currentColor"
-                        content={({ x, y, width, value }: { x?: number; y?: number; width?: number; value?: unknown }) => {
+                        content={({ x, y, width, value }: { x?: string | number; y?: string | number; width?: string | number; value?: unknown }) => {
                           if (value === null || value === undefined) return null;
                           const n = Number(value);
                           const color = n >= 0 ? '#059669' : '#dc2626';
                           const label = `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+                          const xn = typeof x === 'number' ? x : Number(x) || 0;
+                          const yn = typeof y === 'number' ? y : Number(y) || 0;
+                          const wn = typeof width === 'number' ? width : Number(width) || 0;
                           return (
-                            <text x={(x || 0) + (width || 0) / 2} y={(y || 0) - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
+                            <text x={xn + wn / 2} y={yn - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
                               {label}
                             </text>
                           );

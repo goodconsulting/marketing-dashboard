@@ -301,23 +301,23 @@ export function ReportView({ snapshots, customers }: ReportViewProps) {
               <KPICard
                 label="Revenue"
                 value={summaryKPIs?.rev ? formatMetricValue('Total Revenue', summaryKPIs.rev.current) : '—'}
-                subtitle={summaryKPIs?.rev?.percentChange !== null
-                  ? `${(summaryKPIs.rev.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.rev.percentChange}% ${compType}`
+                subtitle={summaryKPIs?.rev?.percentChange != null
+                  ? `${(summaryKPIs?.rev?.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs?.rev?.percentChange}% ${compType}`
                   : undefined}
                 color={(summaryKPIs?.rev?.absoluteChange ?? 0) >= 0 ? '#10b981' : '#ef4444'}
               />
               <KPICard
                 label="Total Spend"
                 value={summaryKPIs?.spend ? formatMetricValue('Total Spend', summaryKPIs.spend.current) : '—'}
-                subtitle={summaryKPIs?.spend?.percentChange !== null
-                  ? `${(summaryKPIs.spend.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.spend.percentChange}% ${compType}`
+                subtitle={summaryKPIs?.spend?.percentChange != null
+                  ? `${(summaryKPIs?.spend?.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs?.spend?.percentChange}% ${compType}`
                   : undefined}
               />
               <KPICard
                 label="Est. CAC"
                 value={formatCurrency(ytdMetrics.ytdCAC)}
-                subtitle={summaryKPIs?.cac?.percentChange !== null
-                  ? `${(summaryKPIs.cac.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.cac.percentChange}% ${compType}`
+                subtitle={summaryKPIs?.cac?.percentChange != null
+                  ? `${(summaryKPIs?.cac?.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs?.cac?.percentChange}% ${compType}`
                   : undefined}
                 color={(summaryKPIs?.cac?.absoluteChange ?? 0) <= 0 ? '#10b981' : '#ef4444'}
                 tooltip="YTD Acquisition Spend (Paid Media + Direct Mail + OOH + Sponsorship) ÷ New CRM Signups"
