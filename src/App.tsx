@@ -103,6 +103,7 @@ export default function App() {
             <CustomerHealthView
               customers={store.state.crmCustomers}
               snapshots={snapshots}
+              stageTransitions={store.state.stageTransitions}
             />
           )}
 
