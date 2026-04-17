@@ -47,6 +47,14 @@ export function initializeDatabase(): void {
     db.exec('ALTER TABLE fact_google_campaign ADD COLUMN conversions REAL DEFAULT 0');
   }
 
+  // Add spend column to fact_amp_campaign if missing (added Apr 2026).
+  // CTV streaming rows used to have no spend field; now they do so we can
+  // link the Sinclair KGAN CTV Premium invoice charge directly to the row.
+  const ampCols = db.pragma('table_info(fact_amp_campaign)') as Array<{ name: string }>;
+  if (!ampCols.some(c => c.name === 'spend')) {
+    db.prepare('ALTER TABLE fact_amp_campaign ADD COLUMN spend REAL DEFAULT 0').run();
+  }
+
   // Migration guard: warn if CRM snapshots exist but stage transitions haven't
   // been derived. The backfill is a separate script (not auto-run on startup)
   // to keep ingest intentional; this warning tells the operator what to do.
@@ -734,8 +742,8 @@ export function insertAmpCampaigns(records: AmpCampaign[]): number {
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO fact_amp_campaign
     (month, campaign_type, campaign_name, location, impressions, reach, frequency,
-     sent, views, clicks, view_rate, click_rate, vcr, viewing_hours)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     sent, views, clicks, view_rate, click_rate, vcr, viewing_hours, spend)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let inserted = 0;
@@ -746,7 +754,7 @@ export function insertAmpCampaigns(records: AmpCampaign[]): number {
       stmt.run(
         r.month, r.campaignType, r.campaignName, r.location,
         r.impressions, r.reach, r.frequency, r.sent, r.views, r.clicks,
-        r.viewRate, r.clickRate, r.vcr, r.viewingHours,
+        r.viewRate, r.clickRate, r.vcr, r.viewingHours, r.spend ?? 0,
       );
       inserted++;
     }
@@ -763,7 +771,7 @@ export function getAmpCampaigns(month?: string): AmpCampaign[] {
     month: string; campaign_type: string; campaign_name: string; location: string;
     impressions: number; reach: number; frequency: number; sent: number;
     views: number; clicks: number; view_rate: number; click_rate: number;
-    vcr: number; viewing_hours: number;
+    vcr: number; viewing_hours: number; spend: number | null;
   }>;
   return rows.map(r => ({
     month: r.month, campaignType: r.campaign_type, campaignName: r.campaign_name,
@@ -771,6 +779,7 @@ export function getAmpCampaigns(month?: string): AmpCampaign[] {
     frequency: r.frequency, sent: r.sent, views: r.views, clicks: r.clicks,
     viewRate: r.view_rate, clickRate: r.click_rate, vcr: r.vcr,
     viewingHours: r.viewing_hours,
+    spend: r.spend ?? 0,
   }));
 }
 

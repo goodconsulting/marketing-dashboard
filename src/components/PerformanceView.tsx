@@ -324,14 +324,18 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, onelinkData, a
       });
     }
 
-    // AMP CTV (streaming only — skip email campaigns in this summary)
+    // AMP CTV (streaming only — skip email campaigns in this summary).
+    // Spend sourced from the Sinclair Broadcast Group c/o KGAN "CTV Premium"
+    // invoice line on each month's expenses. If all rows have spend=0 we
+    // fall back to the pending-invoice placeholder.
     if (filteredAmpStreaming.length > 0) {
       const ampImps = filteredAmpStreaming.reduce((s, c) => s + c.impressions, 0);
+      const ampSpend = filteredAmpStreaming.reduce((s, c) => s + (c.spend || 0), 0);
       rows.push({
         channel: 'AMP CTV',
         color: '#8b5cf6',
-        spend: null,
-        spendNote: '(pending invoice)',
+        spend: ampSpend > 0 ? ampSpend : null,
+        spendNote: ampSpend > 0 ? undefined : '(pending invoice)',
         impressions: ampImps,
         clicks: null,
         conversions: null,

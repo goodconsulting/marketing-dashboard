@@ -388,6 +388,7 @@ CREATE TABLE IF NOT EXISTS fact_amp_campaign (
   click_rate REAL DEFAULT 0,
   vcr REAL DEFAULT 0,
   viewing_hours REAL DEFAULT 0,
+  spend REAL DEFAULT 0,
   UNIQUE(month, campaign_type, campaign_name)
 );
 `;

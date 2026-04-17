@@ -300,6 +300,7 @@ export interface AmpCampaign {
   clickRate: number;
   vcr: number;
   viewingHours: number;
+  spend: number;
 }
 
 // ─── Billboard Monthly (Lamar) ───────────────────────────────────
