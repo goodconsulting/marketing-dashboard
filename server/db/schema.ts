@@ -411,6 +411,33 @@ CREATE TABLE IF NOT EXISTS fact_billboard_monthly (
 );
 `;
 
+// Stage transitions: materialized from consecutive CRM snapshot pairs.
+// One row per detected stage change per customer. Direction derived from
+// the canonical stage ladder (UNKNOWN=0, SLIDER=1, ROOKIE=2, REGULAR=3,
+// LOYALIST=4, WHALE=5; CHURNED=-1 is a terminal sink).
+// INSERT OR REPLACE keyed on (customer_id, from_snapshot, to_snapshot).
+const FACT_STAGE_TRANSITION = `
+CREATE TABLE IF NOT EXISTS fact_stage_transition (
+  id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id               TEXT NOT NULL,
+  from_stage                TEXT NOT NULL,
+  to_stage                  TEXT NOT NULL,
+  direction                 TEXT NOT NULL,
+  from_snapshot             TEXT NOT NULL,
+  to_snapshot               TEXT NOT NULL,
+  days_in_from_stage        INTEGER,
+  spend_in_from_stage       REAL,
+  visits_in_from_stage      INTEGER,
+  from_lifetime_spend       REAL,
+  to_lifetime_spend         REAL,
+  from_lifetime_visits      INTEGER,
+  to_lifetime_visits        INTEGER,
+  estimated_transition_date TEXT,
+  detected_at               TEXT DEFAULT (datetime('now')),
+  UNIQUE(customer_id, from_snapshot, to_snapshot)
+);
+`;
+
 // Generic long-tail paid media channels (Yelp, TikTok, LinkedIn, etc.).
 // Channels big enough to warrant dedicated columns get their own table (see
 // fact_meta_campaign, fact_google_campaign, fact_amp_campaign). Everything
@@ -491,6 +518,11 @@ CREATE INDEX IF NOT EXISTS idx_store_sales_month ON fact_store_sales(month);
 
 -- Upload log: status-based queries (show pending uploads)
 CREATE INDEX IF NOT EXISTS idx_upload_status ON upload_log(status);
+
+-- Stage transition indexes: customer lookup, stage-pair aggregation, month filtering
+CREATE INDEX IF NOT EXISTS idx_transition_customer ON fact_stage_transition(customer_id);
+CREATE INDEX IF NOT EXISTS idx_transition_stages ON fact_stage_transition(from_stage, to_stage);
+CREATE INDEX IF NOT EXISTS idx_transition_to_snapshot ON fact_stage_transition(to_snapshot);
 `;
 
 // ---------------------------------------------------------------------------
@@ -517,6 +549,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   FACT_AMP_CAMPAIGN,
   FACT_BILLBOARD_MONTHLY,
   FACT_OTHER_CAMPAIGN,
+  FACT_STAGE_TRANSITION,
   UPLOAD_LOG,
   SETTINGS,
   INDEXES,
@@ -542,6 +575,7 @@ export const TABLE_NAMES = [
   'fact_amp_campaign',
   'fact_billboard_monthly',
   'fact_other_campaign',
+  'fact_stage_transition',
   'upload_log',
   'settings',
 ] as const;
