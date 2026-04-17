@@ -22,7 +22,9 @@ export type DataSourceType =
   | 'organic'
   | '3po'
   | 'expenses'
-  | 'budget';
+  | 'budget'
+  | 'onelink'
+  | 'discount_summary';
 
 export type JourneyStage = 'WHALE' | 'LOYALIST' | 'REGULAR' | 'ROOKIE' | 'CHURNED' | 'SLIDER' | 'UNKNOWN';
 
@@ -61,6 +63,24 @@ export interface MetaCampaign {
   costPerResult: number;
 }
 
+export interface MetaAdSet {
+  month: string;
+  campaignName: string;
+  adSetName: string;
+  delivery: string;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  spend: number;
+  results: number;
+  resultType: string;
+  costPerResult: number;
+  landingPageViews: number;
+  cpm: number;
+  cpc: number;
+  ctr: number;
+}
+
 // ─── Google Ads ─────────────────────────────────────────────────
 
 export interface GoogleCampaign {
@@ -82,18 +102,30 @@ export interface GoogleDaily {
   cost: number;
 }
 
-// ─── Toast POS ──────────────────────────────────────────────────
+// ─── Store Sales (Clover + Toast POS) ───────────────────────────
 
-export interface ToastSales {
+export interface StoreSales {
   month: string;
   location: string;
   grossSales: number;
   netSales: number;
   orders: number;
   discountTotal: number;
-  source?: 'api' | 'csv';
+  guests?: number;
+  tips?: number;
+  taxAmount?: number;
+  refunds?: number;
+  doordashSales?: number;
+  uberEatsSales?: number;
+  foodSales?: number;
+  smoothieSales?: number;
+  retailSales?: number;
+  source?: 'clover' | 'toast' | 'clover+toast';
   syncedAt?: string;
 }
+
+/** @deprecated Use StoreSales instead */
+export type ToastSales = StoreSales;
 
 // ─── Incentivio Aggregate Metrics ───────────────────────────────
 
@@ -237,6 +269,86 @@ export interface MenuIntelligenceItem {
 
   // Snapshot metadata
   snapshotMonth: string;
+}
+
+// ─── OneLink QR Tracking ─────────────────────────────────────────
+
+export interface OneLinkDaily {
+  date: string;
+  month: string;
+  trackingCode: string;
+  campaignSource: string;
+  campaignLabel: string;
+  total: number;
+  iphone: number;
+  ipad: number;
+  android: number;
+  other: number;
+}
+
+// ─── Discount Summary ────────────────────────────────────────────
+
+export interface DiscountSummary {
+  period: string;
+  periodType: string;
+  discountName: string;
+  discountCategory: string;
+  usageCount: number;
+  discountAmount: number;
+  profitability: number;
+  pctOfTotalSales: number;
+}
+
+// ─── AMP Campaigns (Email + Streaming) ───────────────────────────
+
+export interface AmpCampaign {
+  month: string;
+  campaignType: string;
+  campaignName: string;
+  location: string;
+  impressions: number;
+  reach: number;
+  frequency: number;
+  sent: number;
+  views: number;
+  clicks: number;
+  viewRate: number;
+  clickRate: number;
+  vcr: number;
+  viewingHours: number;
+}
+
+// ─── Billboard Monthly (Lamar) ───────────────────────────────────
+
+export interface BillboardMonthly {
+  month: string;
+  location: string;
+  panelId: string;
+  playsGuaranteed: number;
+  playsDelivered: number;
+  impressionsGuaranteed: number;
+  impressionsDelivered: number;
+  variancePct: number;
+  numCreatives: number;
+  contractedDays: number;
+}
+
+// ─── Other Campaigns (Yelp, TikTok, LinkedIn, long-tail) ─────────
+
+export interface OtherCampaign {
+  month: string;
+  source: string;
+  campaignName: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number;
+  cpc: number;
+  costPerConv: number;
+  windowStart: string | null;
+  windowEnd: string | null;
+  extra: Record<string, unknown> | null;
 }
 
 // ─── Parser result types ─────────────────────────────────────────

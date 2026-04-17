@@ -7,12 +7,15 @@ import { KPICard } from './KPICard';
 import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
-import { Users, Heart, TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
-import type { MonthlySnapshot, CRMCustomerRecord, SpendCategory } from '../types';
+import { Users, Heart, TrendingUp, TrendingDown, Minus, Info, Tag, ArrowUpDown } from 'lucide-react';
+import type { MonthlySnapshot, CRMCustomerRecord, SpendCategory, DiscountSummary } from '../types';
+import { ReferenceLine } from 'recharts';
 
 interface AttributionViewProps {
   snapshots: MonthlySnapshot[];
   customers: CRMCustomerRecord[];
+  allCustomers: CRMCustomerRecord[];  // includes ghost accounts (0-activity signups)
+  discountSummary: DiscountSummary[];
 }
 
 function formatCurrency(n: number): string {
@@ -28,6 +31,71 @@ function formatMonth(m: string): string {
 }
 
 const REV_COLORS = ['#10b981', '#3b82f6']; // new, returning
+
+/** Discount category display config */
+const DISCOUNT_CATEGORIES: Record<string, { label: string; color: string; description: string; examples: string[]; tracking: string }> = {
+  loyalty_redemption: {
+    label: 'Loyalty Redemptions', color: '#3B6D11',
+    description: 'Earned rewards from loyalty program — reflects program health and retention',
+    examples: ['1000 Points = Free Smoothie', 'APP – Birthday Offer', 'Birthday Offer – Free Smoothie'],
+    tracking: 'Track: redemption rate vs. loyalty balance growth',
+  },
+  acquisition: {
+    label: 'Acquisition & Referral', color: '#BA7517',
+    description: 'New customer acquisition offers — highest ROI-risk category',
+    examples: ['APP – Sign up offer Free Smoothie', 'Sign Up Offer – Free Smoothie', 'Referral Offer – Free Smoothie', 'Refferal Offer – New sign up'],
+    tracking: 'Track: cost per new customer, LTV of acquired cohort (30/60/90 day retention)',
+  },
+  meal_deal: {
+    label: 'Meal Deals & Bundles', color: '#2D5A3D',
+    description: 'Basket-building promotions — strategic when margin per deal is positive',
+    examples: ['Meal Deal', 'APP – Meal Deal', 'APP – Breakfast Deal', 'Breakfast Deal', 'Web/app – meal deal'],
+    tracking: 'Track: attach rate, avg basket value, net margin per deal',
+  },
+  seasonal_lto: {
+    label: 'Seasonal & LTO', color: '#f59e0b',
+    description: 'Time-bound promotions tied to campaigns — evaluate on incremental lift',
+    examples: ['BOGO Card', 'APP – FREE Egg Bite with Protein Coffee', 'VAL20', '10% off all in-store'],
+    tracking: 'Track: incremental sales lift vs. discount cost',
+  },
+  community_service: {
+    label: 'Community & Service', color: '#185FA5',
+    description: 'Brand-intentional discounts for community groups — low volume, intentional',
+    examples: ['Military/First Responder Discount', 'Service 20% – Heroes', 'Case Discount (20%)', 'VIP Discount'],
+    tracking: 'Track: usage count + profitability; flag if usage spikes',
+  },
+  operations: {
+    label: 'Internal & Operational', color: '#6b7280',
+    description: 'Employee benefits, manager comps, spillage — COGS/labor cost, not marketing',
+    examples: ['Employee Discount – Item/Check', 'Employee Meal 100%', 'Manager Comp', 'Spillage/Food Quality', 'Open $ / Open %'],
+    tracking: 'Flag: Open $ / % are unstructured — monitor for misuse. Track comp cost vs. labor budget',
+  },
+  partner_marketing: {
+    label: 'Partner & In-Kind', color: '#993556',
+    description: 'Trade discounts for marketing exposure — requires documentation',
+    examples: ["Momo's 20% off", '100% OFF IN-KIND MARKETING', 'Stack Influencer Program'],
+    tracking: 'Ensure in-kind trades are documented with clear attribution',
+  },
+  other: {
+    label: 'Other', color: '#d1d5db',
+    description: 'Uncategorized discounts — review for proper classification',
+    examples: [],
+    tracking: '',
+  },
+};
+
+/** Format discount period values for display */
+function formatDiscountPeriod(p: string): string {
+  if (p.includes('Q')) {
+    // "2025-Q2" → "Q2 2025"
+    const [year, q] = p.split('-');
+    return `${q} ${year}`;
+  }
+  // "2026-01" → "Jan 2026"
+  const [year, month] = p.split('-');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${names[parseInt(month) - 1]} ${year}`;
+}
 
 /** Only show CAC / LTV / ROI trend data from when Incentivio tracking began */
 const INCENTIVIO_START = '2025-06';
@@ -112,7 +180,7 @@ function LTVCACTooltip({ active, payload, label }: any) {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export function AttributionView({ snapshots, customers }: AttributionViewProps) {
+export function AttributionView({ snapshots, customers, allCustomers, discountSummary }: AttributionViewProps) {
   const latest = snapshots[snapshots.length - 1];
   const previous = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
 
@@ -221,28 +289,57 @@ export function AttributionView({ snapshots, customers }: AttributionViewProps) 
   const [acquisitionGranularity, setAcquisitionGranularity] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
 
   const acquisitionData = useMemo(() => {
-    // Group customers by their account creation month
-    const monthlyMap = new Map<string, { newCustomers: number; cohortRevenue90d: number }>();
-
+    // Count active customers by signup month
+    const activeMap = new Map<string, { newCustomers: number; cohortRevenue90d: number }>();
     customers.forEach(c => {
       if (!c.accountCreatedDate || c.accountCreatedDate === '-') return;
-      const month = c.accountCreatedDate.slice(0, 7); // YYYY-MM
+      const month = c.accountCreatedDate.slice(0, 7);
       if (!month.match(/^\d{4}-\d{2}$/)) return;
-      if (!monthlyMap.has(month)) monthlyMap.set(month, { newCustomers: 0, cohortRevenue90d: 0 });
-      const entry = monthlyMap.get(month)!;
+      if (!activeMap.has(month)) activeMap.set(month, { newCustomers: 0, cohortRevenue90d: 0 });
+      const entry = activeMap.get(month)!;
       entry.newCustomers++;
       entry.cohortRevenue90d += c.last90DaysSpend;
     });
 
-    const monthlyData = Array.from(monthlyMap.entries())
-      .map(([month, data]) => ({ period: month, ...data }))
-      .filter(d => d.period >= INCENTIVIO_START)
-      .sort((a, b) => a.period.localeCompare(b.period));
+    // Count ALL customers (including ghosts) by signup month
+    const allMap = new Map<string, number>();
+    allCustomers.forEach(c => {
+      if (!c.accountCreatedDate || c.accountCreatedDate === '-') return;
+      const month = c.accountCreatedDate.slice(0, 7);
+      if (!month.match(/^\d{4}-\d{2}$/)) return;
+      allMap.set(month, (allMap.get(month) ?? 0) + 1);
+    });
 
-    if (acquisitionGranularity === 'monthly') return monthlyData;
+    // Merge: active + ghost count per month
+    const allMonths = new Set([...activeMap.keys(), ...allMap.keys()]);
+    const monthlyData = Array.from(allMonths)
+      .filter(m => m >= INCENTIVIO_START)
+      .sort()
+      .map(month => {
+        const active = activeMap.get(month)?.newCustomers ?? 0;
+        const total = allMap.get(month) ?? active;
+        return {
+          period: month,
+          newCustomers: active,
+          ghostAccounts: total - active,
+          cohortRevenue90d: activeMap.get(month)?.cohortRevenue90d ?? 0,
+        };
+      });
+
+    // Helper to add MoM % to a sorted array
+    const addMoM = (arr: { period: string; newCustomers: number; ghostAccounts: number; cohortRevenue90d: number }[]) => {
+      let prev = 0;
+      return arr.map((d, i) => {
+        const momPct = i > 0 && prev > 0 ? ((d.newCustomers - prev) / prev) * 100 : null;
+        prev = d.newCustomers;
+        return { ...d, _momPct: momPct };
+      });
+    };
+
+    if (acquisitionGranularity === 'monthly') return addMoM(monthlyData);
 
     // Aggregate to quarters or years
-    const grouped = new Map<string, { newCustomers: number; cohortRevenue90d: number }>();
+    const grouped = new Map<string, { newCustomers: number; ghostAccounts: number; cohortRevenue90d: number }>();
     monthlyData.forEach(d => {
       let key: string;
       if (acquisitionGranularity === 'quarterly') {
@@ -252,16 +349,19 @@ export function AttributionView({ snapshots, customers }: AttributionViewProps) 
       } else {
         key = d.period.slice(0, 4);
       }
-      if (!grouped.has(key)) grouped.set(key, { newCustomers: 0, cohortRevenue90d: 0 });
+      if (!grouped.has(key)) grouped.set(key, { newCustomers: 0, ghostAccounts: 0, cohortRevenue90d: 0 });
       const g = grouped.get(key)!;
       g.newCustomers += d.newCustomers;
+      g.ghostAccounts += d.ghostAccounts;
       g.cohortRevenue90d += d.cohortRevenue90d;
     });
 
-    return Array.from(grouped.entries())
-      .map(([period, data]) => ({ period, ...data }))
-      .sort((a, b) => a.period.localeCompare(b.period));
-  }, [customers, acquisitionGranularity]);
+    return addMoM(
+      Array.from(grouped.entries())
+        .map(([period, data]) => ({ period, ...data }))
+        .sort((a, b) => a.period.localeCompare(b.period))
+    );
+  }, [customers, allCustomers, acquisitionGranularity]);
 
   // ─── Period comparison for New Customer Acquisition (MoM / QoQ / YoY) ───
   const acquisitionComparison = useMemo(() => {
@@ -362,6 +462,95 @@ export function AttributionView({ snapshots, customers }: AttributionViewProps) 
     });
   }, [snapshots]);
 
+  // ─── Discount Attribution ───
+  const discountPeriods = useMemo(() => {
+    const set = new Set(discountSummary.map(d => d.period));
+    return Array.from(set).sort();
+  }, [discountSummary]);
+
+  const [discountPeriod, setDiscountPeriod] = useState<string>('');
+  // Default to most recent period on first render
+  const selectedDiscountPeriod = discountPeriod || (discountPeriods.length > 0 ? discountPeriods[discountPeriods.length - 1] : '');
+  const [discountMetric, setDiscountMetric] = useState<'count' | 'amount'>('count');
+  const [discountSortKey, setDiscountSortKey] = useState<'usageCount' | 'discountAmount' | 'profitability' | 'pctOfTotalSales'>('usageCount');
+  const [discountSortDir, setDiscountSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Section A: Category breakdown for selected period
+  const discountCategoryData = useMemo(() => {
+    const filtered = discountSummary.filter(d => d.period === selectedDiscountPeriod);
+    const catMap = new Map<string, { count: number; amount: number }>();
+    filtered.forEach(d => {
+      const existing = catMap.get(d.discountCategory) || { count: 0, amount: 0 };
+      existing.count += d.usageCount;
+      existing.amount += d.discountAmount;
+      catMap.set(d.discountCategory, existing);
+    });
+    return Array.from(catMap.entries())
+      .map(([cat, data]) => ({
+        category: cat,
+        label: DISCOUNT_CATEGORIES[cat]?.label ?? cat,
+        color: DISCOUNT_CATEGORIES[cat]?.color ?? '#d1d5db',
+        count: data.count,
+        amount: data.amount,
+      }))
+      .sort((a, b) => (discountMetric === 'count' ? b.count - a.count : b.amount - a.amount));
+  }, [discountSummary, selectedDiscountPeriod, discountMetric]);
+
+  // Section B: Discount-to-Gross-Sales % trend
+  // Map discount period to store-sales months for gross sales lookup
+  function periodToMonths(period: string): string[] {
+    if (period.includes('Q')) {
+      const [year, q] = period.split('-');
+      const quarter = parseInt(q.replace('Q', ''));
+      const startMonth = (quarter - 1) * 3 + 1;
+      return [0, 1, 2].map(i => `${year}-${String(startMonth + i).padStart(2, '0')}`);
+    }
+    return [period];
+  }
+
+  const discountTrendData = useMemo(() => {
+    if (discountPeriods.length === 0) return [];
+    return discountPeriods.map(period => {
+      const periodRows = discountSummary.filter(d => d.period === period);
+      const totalDiscount = periodRows.reduce((s, d) => s + d.discountAmount, 0);
+      // Use actual store gross sales from snapshots
+      const months = periodToMonths(period);
+      const grossSales = snapshots
+        .filter(s => months.includes(s.month))
+        .reduce((sum, s) => sum + s.totalRevenue, 0);
+      const pct = grossSales > 0 ? (totalDiscount / grossSales) * 100 : 0;
+      return {
+        period: formatDiscountPeriod(period),
+        rawPeriod: period,
+        discountPct: Math.round(pct * 100) / 100,
+        totalDiscount: Math.round(totalDiscount),
+        grossSales: Math.round(grossSales),
+      };
+    });
+  }, [discountSummary, discountPeriods, snapshots]);
+
+  // Section C: Top discounts table for selected period
+  const topDiscounts = useMemo(() => {
+    const filtered = discountSummary
+      .filter(d => d.period === selectedDiscountPeriod)
+      .sort((a, b) => {
+        const aVal = a[discountSortKey];
+        const bVal = b[discountSortKey];
+        return discountSortDir === 'desc' ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
+      })
+      .slice(0, 10);
+    return filtered;
+  }, [discountSummary, selectedDiscountPeriod, discountSortKey, discountSortDir]);
+
+  const handleDiscountSort = (key: typeof discountSortKey) => {
+    if (discountSortKey === key) {
+      setDiscountSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    } else {
+      setDiscountSortKey(key);
+      setDiscountSortDir('desc');
+    }
+  };
+
   if (!latest) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -426,7 +615,7 @@ export function AttributionView({ snapshots, customers }: AttributionViewProps) 
               <Users size={18} className="text-emerald-600" />
               <div>
                 <h3 className="text-sm font-semibold text-gray-700">New Customer Acquisition</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">Since Jun 2025 · Active accounts only (excludes 0-activity signups)</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Since Jun 2025 · Active customers (green) + ghost accounts (gray)</p>
               </div>
             </div>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
@@ -446,20 +635,63 @@ export function AttributionView({ snapshots, customers }: AttributionViewProps) 
             </div>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={acquisitionData}>
+            <ComposedChart data={acquisitionData} margin={{ top: 28, right: 10, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="period" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <Tooltip
-                formatter={((value: number, name: string) => [
-                  name.includes('Revenue') ? formatCurrency(value) : value.toLocaleString(),
-                  name,
-                ]) as any}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const activeCust = (payload.find(p => p.dataKey === 'newCustomers')?.value ?? 0) as number;
+                  const ghost = (payload.find(p => p.dataKey === 'ghostAccounts')?.value ?? 0) as number;
+                  const total = activeCust + ghost;
+                  const dataPoint = acquisitionData.find(d => d.period === label);
+                  const momPct = dataPoint?._momPct;
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm">
+                      <p className="font-semibold text-gray-800 mb-1.5">{label}</p>
+                      <p className="flex justify-between gap-4 text-emerald-700">
+                        <span>Active Customers</span>
+                        <span className="font-medium">{activeCust.toLocaleString()}</span>
+                      </p>
+                      <p className="flex justify-between gap-4 text-gray-400">
+                        <span>Ghost Accounts</span>
+                        <span className="font-medium">{ghost.toLocaleString()}</span>
+                      </p>
+                      <p className="flex justify-between gap-4 font-bold text-gray-900 border-t border-gray-100 pt-1.5 mt-1.5">
+                        <span>Total Signups</span>
+                        <span>{total.toLocaleString()}</span>
+                      </p>
+                      {momPct !== null && momPct !== undefined && (
+                        <p className={`text-xs mt-1 ${momPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          MoM: {momPct >= 0 ? '+' : ''}{momPct.toFixed(1)}%
+                        </p>
+                      )}
+                    </div>
+                  );
+                }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="newCustomers" name="New Customers" fill="#2D5A3D" radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Bar dataKey="newCustomers" name="Active Customers" stackId="acq" fill="#2D5A3D" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="ghostAccounts" name="Ghost Accounts" stackId="acq" fill="#d1d5db" radius={[4, 4, 0, 0]}>
+                <LabelList
+                  dataKey="_momPct"
+                  position="top"
+                  content={({ x, y, width, value }: { x?: number; y?: number; width?: number; value?: unknown }) => {
+                    if (value === null || value === undefined) return null;
+                    const n = Number(value);
+                    const color = n >= 0 ? '#059669' : '#dc2626';
+                    const label = `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+                    return (
+                      <text x={(x || 0) + (width || 0) / 2} y={(y || 0) - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
+                        {label}
+                      </text>
+                    );
+                  }}
+                />
+              </Bar>
+              <Line type="monotone" dataKey="newCustomers" stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 4" dot={false} legendType="none" />
+            </ComposedChart>
           </ResponsiveContainer>
 
           {/* Period comparison footer (MoM / QoQ / YoY) */}
@@ -637,6 +869,237 @@ export function AttributionView({ snapshots, customers }: AttributionViewProps) 
           </tbody>
         </table>
       </div>
+
+      {/* ─── Discount Attribution ─── */}
+      {discountSummary.length > 0 && (
+        <>
+          <div className="border-t border-gray-200 pt-6 mt-2">
+            <div className="flex items-center gap-2 mb-4">
+              <Tag size={18} className="text-purple-600" />
+              <h2 className="text-lg font-semibold text-gray-900">Discount Attribution</h2>
+            </div>
+          </div>
+
+          {/* Section A: Category Breakdown */}
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-700">Discount Usage by Category</h3>
+              <div className="flex items-center gap-3">
+                {/* Count / Amount toggle */}
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+                  {(['count', 'amount'] as const).map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setDiscountMetric(m)}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                        discountMetric === m
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {m === 'count' ? 'Count' : 'Dollar Amount'}
+                    </button>
+                  ))}
+                </div>
+                {/* Period selector */}
+                <select
+                  value={selectedDiscountPeriod}
+                  onChange={e => setDiscountPeriod(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
+                >
+                  {discountPeriods.map(p => (
+                    <option key={p} value={p}>{formatDiscountPeriod(p)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {discountCategoryData.length > 0 ? (
+              <>
+                {/* Horizontal stacked bar */}
+                {(() => {
+                  const total = discountCategoryData.reduce((s, d) => s + (discountMetric === 'count' ? d.count : d.amount), 0);
+                  return (
+                    <div className="mb-4">
+                      <div className="w-full h-8 rounded-lg overflow-hidden flex bg-gray-100">
+                        {discountCategoryData.map(d => {
+                          const val = discountMetric === 'count' ? d.count : d.amount;
+                          const pct = total > 0 ? (val / total) * 100 : 0;
+                          if (pct < 0.5) return null;
+                          return (
+                            <div
+                              key={d.category}
+                              className="h-full transition-all relative group"
+                              style={{ width: `${pct}%`, backgroundColor: d.color }}
+                              title={`${d.label}: ${discountMetric === 'count' ? val.toLocaleString() : formatCurrency(val)} (${pct.toFixed(1)}%)`}
+                            >
+                              {pct > 8 && (
+                                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white truncate px-1">
+                                  {pct.toFixed(0)}%
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Category legend with values */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {discountCategoryData.map(d => {
+                    const cat = DISCOUNT_CATEGORIES[d.category];
+                    return (
+                      <div key={d.category} className="flex items-center gap-2 text-xs text-gray-600">
+                        <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: d.color }} />
+                        <span className="truncate">{d.label}</span>
+                        {cat && (
+                          <span className="relative group inline-flex shrink-0">
+                            <Info size={11} className="text-gray-400 cursor-help" />
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-3 py-2 bg-gray-800 text-white text-[10px] leading-snug rounded shadow-lg max-w-[280px] w-max opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 text-left">
+                              <span className="font-semibold block mb-0.5">{cat.label}</span>
+                              <span className="block mb-1">{cat.description}</span>
+                              {cat.examples.length > 0 && (
+                                <span className="block mb-1">
+                                  {cat.examples.map((ex, i) => (
+                                    <span key={i} className="block">• {ex}</span>
+                                  ))}
+                                </span>
+                              )}
+                              {cat.tracking && <span className="block italic text-gray-300">{cat.tracking}</span>}
+                            </span>
+                          </span>
+                        )}
+                        <span className="ml-auto font-medium text-gray-800">
+                          {discountMetric === 'count' ? d.count.toLocaleString() : formatCurrency(d.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-8">No discount data for this period</p>
+            )}
+          </div>
+
+          {/* Section B: Discount-to-Gross-Sales % Trend */}
+          {discountTrendData.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-700 mb-1">Discount-to-Gross-Sales % Trend</h3>
+              <p className="text-xs text-gray-400 mb-4">Total discount as a percentage of gross sales (discount + profitability) per period</p>
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={discountTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      const pct = payload.find(p => p.dataKey === 'discountPct');
+                      const amt = payload.find(p => p.dataKey === 'totalDiscount');
+                      return (
+                        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+                          <p className="font-semibold text-gray-800 mb-1.5">{label}</p>
+                          {pct && (
+                            <p className="flex justify-between gap-4" style={{ color: '#8b5cf6' }}>
+                              <span>Discount % of Gross</span>
+                              <span className="font-medium">{(pct.value as number).toFixed(2)}%</span>
+                            </p>
+                          )}
+                          {amt && (
+                            <p className="flex justify-between gap-4" style={{ color: '#f59e0b' }}>
+                              <span>Total Discounts</span>
+                              <span className="font-medium">{formatCurrency(amt.value as number)}</span>
+                            </p>
+                          )}
+                        </div>
+                      );
+                    }}
+                  />
+                  <Legend />
+                  <ReferenceLine yAxisId="left" y={discountTrendData.reduce((s, d) => s + d.discountPct, 0) / discountTrendData.length} stroke="#a78bfa" strokeDasharray="5 5" label={{ value: 'Avg', fill: '#a78bfa', fontSize: 10 }} />
+                  <Bar yAxisId="right" dataKey="totalDiscount" name="Total Discounts ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} opacity={0.6} />
+                  <Line yAxisId="left" type="monotone" dataKey="discountPct" name="Discount % of Gross Sales" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4, fill: '#8b5cf6' }}>
+                    <LabelList dataKey="discountPct" position="top" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fill: '#8b5cf6', fontWeight: 600 }} />
+                  </Line>
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Section C: Top Discounts Table */}
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">
+                Top 10 Discounts
+                <span className="ml-2 text-xs font-normal text-gray-400">({formatDiscountPeriod(selectedDiscountPeriod)})</span>
+              </h3>
+              <select
+                value={selectedDiscountPeriod}
+                onChange={e => setDiscountPeriod(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
+              >
+                {discountPeriods.map(p => (
+                  <option key={p} value={p}>{formatDiscountPeriod(p)}</option>
+                ))}
+              </select>
+            </div>
+            {topDiscounts.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-100">
+                      <th className="pb-2 pr-4">Discount Name</th>
+                      <th className="pb-2 pr-4">Category</th>
+                      <th className="pb-2 text-right pr-4 cursor-pointer select-none" onClick={() => handleDiscountSort('usageCount')}>
+                        <span className="inline-flex items-center gap-1">Count <ArrowUpDown size={12} className={discountSortKey === 'usageCount' ? 'text-gray-800' : 'text-gray-300'} /></span>
+                      </th>
+                      <th className="pb-2 text-right pr-4 cursor-pointer select-none" onClick={() => handleDiscountSort('discountAmount')}>
+                        <span className="inline-flex items-center gap-1">Amount <ArrowUpDown size={12} className={discountSortKey === 'discountAmount' ? 'text-gray-800' : 'text-gray-300'} /></span>
+                      </th>
+                      <th className="pb-2 text-right pr-4 cursor-pointer select-none" onClick={() => handleDiscountSort('profitability')}>
+                        <span className="inline-flex items-center gap-1">Profitability <ArrowUpDown size={12} className={discountSortKey === 'profitability' ? 'text-gray-800' : 'text-gray-300'} /></span>
+                      </th>
+                      <th className="pb-2 text-right cursor-pointer select-none" onClick={() => handleDiscountSort('pctOfTotalSales')}>
+                        <span className="inline-flex items-center gap-1">% of Sales <ArrowUpDown size={12} className={discountSortKey === 'pctOfTotalSales' ? 'text-gray-800' : 'text-gray-300'} /></span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topDiscounts.map((d, i) => {
+                      const catConfig = DISCOUNT_CATEGORIES[d.discountCategory];
+                      return (
+                        <tr key={i} className="border-b border-gray-50">
+                          <td className="py-2 pr-4 text-gray-800 font-medium max-w-[200px] truncate" title={d.discountName}>
+                            {d.discountName}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <span
+                              className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
+                              style={{ backgroundColor: catConfig?.color ?? '#d1d5db' }}
+                            >
+                              {catConfig?.label ?? d.discountCategory}
+                            </span>
+                          </td>
+                          <td className="py-2 text-right pr-4 tabular-nums">{d.usageCount.toLocaleString()}</td>
+                          <td className="py-2 text-right pr-4 tabular-nums">{formatCurrency(d.discountAmount)}</td>
+                          <td className="py-2 text-right pr-4 tabular-nums">{formatCurrency(d.profitability)}</td>
+                          <td className="py-2 text-right tabular-nums">{d.pctOfTotalSales.toFixed(2)}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-8">No discount data for this period</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

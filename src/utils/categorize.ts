@@ -16,8 +16,12 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'yelp': 'paid_media',
   'indeed': 'paid_media',
   'dd marketing': 'paid_media',
+  'dd mktg': 'paid_media',
   'doordash': 'paid_media',
   'uber eats': 'paid_media',
+  'ue mktg': 'paid_media',
+  'ue marketing': 'paid_media',
+  'sinclair': 'paid_media',
 
   // Direct Mail & Print
   'allegra': 'direct_mail_print',
@@ -25,6 +29,7 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'gotprint': 'direct_mail_print',
   'usps': 'direct_mail_print',
   'vpc direct': 'direct_mail_print',
+  'uline': 'direct_mail_print',
 
   // Out-of-Home
   'lamar': 'ooh',
@@ -43,19 +48,24 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'brightlocal': 'software_fees',
   'claude.ai': 'software_fees',
   'claude ai': 'software_fees',
+  'giftameal': 'software_fees',
 
   // Labor
   'hoskins': 'labor',
   'hopkins': 'labor',
   'alexis': 'labor',
   'tyce': 'labor',
+  'hello digital': 'labor',
 
   // Sponsorships
   'metro alliance': 'sponsorship',
   'economic alliance': 'sponsorship',
   'cedar rapids metro': 'sponsorship',
-  'giftameal': 'sponsorship',
   'west des moines': 'sponsorship',
+  'newbo': 'sponsorship',
+  'urbandale chamber': 'sponsorship',
+  'careismatic': 'sponsorship',
+  'legitscript': 'sponsorship',
   'sponsorship': 'sponsorship',
 };
 

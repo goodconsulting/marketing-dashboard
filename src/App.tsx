@@ -70,10 +70,10 @@ export default function App() {
     <div className="min-h-screen bg-[#f8fafc]">
       <Header activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <main className="max-w-[1600px] mx-auto px-6 py-6">
+      <main className="ml-[220px] min-h-screen px-6 py-6 max-w-[1400px]">
         <Suspense fallback={<TabSpinner />}>
           {activeTab === 'overview' && (
-            <OverviewView snapshots={snapshots} annualBudget={store.state.annualBudget} customers={store.state.crmCustomers} />
+            <OverviewView snapshots={snapshots} annualBudget={store.state.annualBudget} customers={store.state.crmCustomers} ampCampaigns={store.state.ampCampaigns} billboardData={store.state.billboardData} onelinkData={store.state.onelinkData} />
           )}
 
           {activeTab === 'spend' && (
@@ -88,11 +88,15 @@ export default function App() {
             <PerformanceView
               metaCampaigns={store.state.metaCampaigns}
               googleCampaigns={store.state.googleCampaigns}
+              onelinkData={store.state.onelinkData}
+              ampCampaigns={store.state.ampCampaigns}
+              billboardData={store.state.billboardData}
+              otherCampaigns={store.state.otherCampaigns}
             />
           )}
 
           {activeTab === 'attribution' && (
-            <AttributionView snapshots={snapshots} customers={store.state.crmCustomers} />
+            <AttributionView snapshots={snapshots} customers={store.state.crmCustomers} allCustomers={store.state.allCrmCustomers} discountSummary={store.state.discountSummary} />
           )}
 
           {activeTab === 'customers' && (
@@ -115,7 +119,7 @@ export default function App() {
           )}
 
           {activeTab === 'report' && (
-            <ReportView snapshots={snapshots} />
+            <ReportView snapshots={snapshots} customers={store.state.crmCustomers} />
           )}
 
           {activeTab === 'upload' && (

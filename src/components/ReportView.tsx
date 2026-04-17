@@ -4,7 +4,7 @@ import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
 import { FileText, Printer, TrendingUp, TrendingDown, Minus, ChevronDown } from 'lucide-react';
-import type { MonthlySnapshot } from '../types';
+import type { MonthlySnapshot, CRMCustomerRecord } from '../types';
 import {
   getMoMComparison, getQoQComparison, getYoYComparison,
   getAvailableMonths, getLatestMonth,
@@ -13,6 +13,7 @@ import {
 
 interface ReportViewProps {
   snapshots: MonthlySnapshot[];
+  customers: CRMCustomerRecord[];
 }
 
 type ComparisonType = 'mom' | 'qoq' | 'yoy';
@@ -85,28 +86,81 @@ const METRIC_SECTIONS: Array<{ title: string; metrics: string[] }> = [
   },
 ];
 
-export function ReportView({ snapshots }: ReportViewProps) {
+export function ReportView({ snapshots, customers }: ReportViewProps) {
   const [compType, setCompType] = useState<ComparisonType>('mom');
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
-  const months = useMemo(() => getAvailableMonths(snapshots), [snapshots]);
-  const activeMonth = selectedMonth || getLatestMonth(snapshots);
+  // Filter to months with actual business data (exclude budget-only future months)
+  const activeSnapshots = useMemo(
+    () => snapshots.filter(s => s.totalRevenue > 0 || s.totalSpend > 0),
+    [snapshots],
+  );
+
+  // Build month → new-customer count from CRM records (ground truth)
+  const crmNewByMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    customers.forEach(c => {
+      if (!c.accountCreatedDate || c.accountCreatedDate === '-') return;
+      const month = c.accountCreatedDate.slice(0, 7);
+      if (!month.match(/^\d{4}-\d{2}$/)) return;
+      map.set(month, (map.get(month) ?? 0) + 1);
+    });
+    return map;
+  }, [customers]);
+
+  // Acquisition spend categories (mirrors AttributionView logic)
+  const ACQUISITION_CATS: Array<'paid_media' | 'direct_mail_print' | 'ooh' | 'sponsorship'> = ['paid_media', 'direct_mail_print', 'ooh', 'sponsorship'];
+
+  const months = useMemo(() => getAvailableMonths(activeSnapshots), [activeSnapshots]);
+  const activeMonth = selectedMonth || getLatestMonth(activeSnapshots);
 
   const comparison = useMemo((): PeriodComparison | null => {
     if (!activeMonth) return null;
     switch (compType) {
-      case 'mom': return getMoMComparison(snapshots, activeMonth);
-      case 'qoq': return getQoQComparison(snapshots, activeMonth);
-      case 'yoy': return getYoYComparison(snapshots, activeMonth);
+      case 'mom': return getMoMComparison(activeSnapshots, activeMonth);
+      case 'qoq': return getQoQComparison(activeSnapshots, activeMonth);
+      case 'yoy': return getYoYComparison(activeSnapshots, activeMonth);
     }
-  }, [snapshots, activeMonth, compType]);
+  }, [activeSnapshots, activeMonth, compType]);
 
   // Index deltas by metric name for easy lookup
   const deltaMap = useMemo(() => {
     if (!comparison) return new Map<string, PeriodDelta>();
     return new Map(comparison.deltas.map(d => [d.metric, d]));
   }, [comparison]);
+
+  // YTD CAC & ROI — acquisition spend / new CRM signups (mirrors Attribution tab)
+  const ytdMetrics = useMemo(() => {
+    if (!activeMonth) return { ytdCAC: 0, ytdROI: 0, projectedLTV: 0 };
+    const currentYear = activeMonth.slice(0, 4);
+    const yearSnaps = activeSnapshots.filter(s => s.month.startsWith(currentYear) && s.totalSpend > 0);
+
+    const ytdAcqSpend = yearSnaps.reduce((sum, s) => {
+      const cats = s.spendByCategory || {};
+      return sum + ACQUISITION_CATS.reduce((cs, cat) => cs + (cats[cat] || 0), 0);
+    }, 0);
+    const ytdNewCustomers = yearSnaps.reduce((sum, s) => sum + (crmNewByMonth.get(s.month) ?? s.newCustomers), 0);
+    const ytdCAC = ytdNewCustomers > 0 ? Math.round(ytdAcqSpend / ytdNewCustomers) : 0;
+
+    // Projected LTV from CRM data
+    const RETENTION: Record<string, number> = { WHALE: 36, LOYALIST: 24, REGULAR: 12, ROOKIE: 6, CHURNED: 0, SLIDER: 3, UNKNOWN: 6 };
+    const activeCustomers = customers.filter(c => c.lifetimeSpend > 0 && c.lifetimeVisits > 0);
+    const avgLTV = activeCustomers.length > 0
+      ? activeCustomers.reduce((s, c) => s + c.lifetimeSpend, 0) / activeCustomers.length
+      : 0;
+    const projectedLTV = activeCustomers.length > 0
+      ? activeCustomers.reduce((s, c) => {
+          const ret = RETENTION[c.journeyStage] || 6;
+          const basket = c.avgBasketValue || 0;
+          const freq = c.purchasesPerMonth || 0;
+          return s + basket * freq * ret;
+        }, 0) / activeCustomers.length
+      : avgLTV;
+    const ytdROI = ytdCAC > 0 ? ((projectedLTV - ytdCAC) / ytdCAC) * 100 : 0;
+
+    return { ytdCAC, ytdROI, projectedLTV };
+  }, [activeSnapshots, activeMonth, crmNewByMonth, customers, ACQUISITION_CATS]);
 
   // Summary stats for the KPI row
   const summaryKPIs = useMemo(() => {
@@ -139,7 +193,7 @@ export function ReportView({ snapshots }: ReportViewProps) {
   };
 
   // ─── Empty State ───
-  if (snapshots.length < 2) {
+  if (activeSnapshots.length < 2) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400">
         <FileText size={48} className="mb-4" />
@@ -261,19 +315,19 @@ export function ReportView({ snapshots }: ReportViewProps) {
               />
               <KPICard
                 label="Est. CAC"
-                value={summaryKPIs?.cac ? formatMetricValue('Est. CAC', summaryKPIs.cac.current) : '—'}
+                value={formatCurrency(ytdMetrics.ytdCAC)}
                 subtitle={summaryKPIs?.cac?.percentChange !== null
                   ? `${(summaryKPIs.cac.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.cac.percentChange}% ${compType}`
                   : undefined}
                 color={(summaryKPIs?.cac?.absoluteChange ?? 0) <= 0 ? '#10b981' : '#ef4444'}
+                tooltip="YTD Acquisition Spend (Paid Media + Direct Mail + OOH + Sponsorship) ÷ New CRM Signups"
               />
               <KPICard
                 label="Est. ROI"
-                value={summaryKPIs?.roi ? `${summaryKPIs.roi.current.toFixed(1)}%` : '—'}
-                subtitle={summaryKPIs?.roi?.percentChange !== null
-                  ? `${(summaryKPIs.roi.absoluteChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.roi.absoluteChange.toFixed(1)}pp`
-                  : undefined}
+                value={`${(ytdMetrics.ytdROI / 100).toFixed(1)}x`}
+                subtitle={`Projected LTV: ${formatCurrency(ytdMetrics.projectedLTV)}`}
                 color={(summaryKPIs?.roi?.absoluteChange ?? 0) >= 0 ? '#10b981' : '#ef4444'}
+                tooltip="(Projected LTV − CAC) ÷ CAC"
               />
             </div>
 

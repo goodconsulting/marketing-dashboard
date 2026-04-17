@@ -11,7 +11,7 @@
  */
 
 import Papa from 'papaparse';
-import type { MetaCampaign } from '../types.ts';
+import type { MetaCampaign, MetaAdSet } from '../types.ts';
 import { parseMonth, parseNum, parseInt_ } from './utils.ts';
 
 export function parseMetaCampaigns(csvContent: string): MetaCampaign[] {
@@ -50,4 +50,52 @@ export function parseMetaCampaigns(csvContent: string): MetaCampaign[] {
   }
 
   return campaigns;
+}
+
+/**
+ * Parse Meta ad set CSV. Same structure as campaign CSV but with
+ * "Ad set name" instead of "Campaign name". The parent campaign name
+ * is provided separately (derived from filename convention).
+ */
+export function parseMetaAdSets(csvContent: string, campaignName: string): MetaAdSet[] {
+  const result = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
+
+  if (result.errors.length > 0) {
+    console.warn(`[Meta Ad Set Parser] ${result.errors.length} row-level warnings`);
+  }
+
+  const adSets: MetaAdSet[] = [];
+
+  for (const row of result.data as Record<string, string>[]) {
+    const start = row['Reporting starts'] || '';
+    const name = row['Ad set name'] || '';
+    const spend = parseNum(row['Amount spent (USD)']);
+    const impressions = parseInt_(row['Impressions']);
+    const reach = parseInt_(row['Reach']);
+    const resultsVal = parseInt_(row['Results']);
+    const cpr = parseNum(row['Cost per results']);
+    const linkClicks = parseInt_(row['Link clicks']);
+
+    if (!name || (spend === 0 && impressions === 0)) continue;
+
+    adSets.push({
+      month: parseMonth(start),
+      campaignName,
+      adSetName: name,
+      delivery: row['Ad set delivery'] || '',
+      impressions,
+      reach,
+      clicks: linkClicks || resultsVal,
+      spend,
+      results: resultsVal,
+      resultType: row['Result indicator'] || '',
+      costPerResult: cpr,
+      landingPageViews: parseInt_(row['Landing page views']),
+      cpm: parseNum(row['CPM (cost per 1,000 impressions) (USD)']),
+      cpc: parseNum(row['CPC (cost per link click) (USD)']),
+      ctr: parseNum(row['CTR (link click-through rate)']),
+    });
+  }
+
+  return adSets;
 }

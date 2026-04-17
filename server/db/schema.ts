@@ -194,7 +194,10 @@ CREATE TABLE IF NOT EXISTS fact_expense (
   amount      REAL NOT NULL,
   category    TEXT NOT NULL,
   source      TEXT,
-  UNIQUE(date, vendor, amount)
+  -- description added to the dedup key (Apr 2026): a single vendor (e.g.
+  -- Sinclair Broadcast Group) can issue multiple invoices on the same day
+  -- with the same amount but distinct line-item descriptions.
+  UNIQUE(date, vendor, amount, description)
 );
 `;
 
@@ -212,6 +215,29 @@ CREATE TABLE IF NOT EXISTS fact_meta_campaign (
   result_type     TEXT,
   cost_per_result REAL DEFAULT 0,
   UNIQUE(month, campaign_name)
+);
+`;
+
+// Meta ad sets: INSERT OR IGNORE on (month, ad_set_name).
+const FACT_META_AD_SET = `
+CREATE TABLE IF NOT EXISTS fact_meta_ad_set (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  month             TEXT NOT NULL,
+  campaign_name     TEXT NOT NULL,
+  ad_set_name       TEXT NOT NULL,
+  delivery          TEXT,
+  impressions       INTEGER DEFAULT 0,
+  reach             INTEGER DEFAULT 0,
+  clicks            INTEGER DEFAULT 0,
+  spend             REAL DEFAULT 0,
+  results           INTEGER DEFAULT 0,
+  result_type       TEXT,
+  cost_per_result   REAL DEFAULT 0,
+  landing_page_views INTEGER DEFAULT 0,
+  cpm               REAL DEFAULT 0,
+  cpc               REAL DEFAULT 0,
+  ctr               REAL DEFAULT 0,
+  UNIQUE(month, ad_set_name)
 );
 `;
 
@@ -241,18 +267,27 @@ CREATE TABLE IF NOT EXISTS fact_google_daily (
 );
 `;
 
-// Toast sales: INSERT OR REPLACE — API source always wins over CSV.
-const FACT_TOAST = `
-CREATE TABLE IF NOT EXISTS fact_toast_sales (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  month          TEXT NOT NULL,
-  location       TEXT NOT NULL,
-  gross_sales    REAL DEFAULT 0,
-  net_sales      REAL DEFAULT 0,
-  orders         INTEGER DEFAULT 0,
-  discount_total REAL DEFAULT 0,
-  source         TEXT,
-  synced_at      TEXT,
+// Store sales: unified Clover + Toast POS data. INSERT OR REPLACE keyed on (month, location).
+const FACT_STORE_SALES = `
+CREATE TABLE IF NOT EXISTS fact_store_sales (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  month           TEXT NOT NULL,
+  location        TEXT NOT NULL,
+  gross_sales     REAL DEFAULT 0,
+  net_sales       REAL DEFAULT 0,
+  orders          INTEGER DEFAULT 0,
+  discount_total  REAL DEFAULT 0,
+  guests          INTEGER DEFAULT 0,
+  tips            REAL DEFAULT 0,
+  tax_amount      REAL DEFAULT 0,
+  refunds         REAL DEFAULT 0,
+  doordash_sales  REAL DEFAULT 0,
+  uber_eats_sales REAL DEFAULT 0,
+  food_sales      REAL DEFAULT 0,
+  smoothie_sales  REAL DEFAULT 0,
+  retail_sales    REAL DEFAULT 0,
+  source          TEXT,
+  synced_at       TEXT,
   UNIQUE(month, location)
 );
 `;
@@ -284,6 +319,41 @@ CREATE TABLE IF NOT EXISTS fact_incentivio_metrics (
 );
 `;
 
+// OneLink QR tracking: daily device breakdown per tracking code.
+// INSERT OR REPLACE keyed on (date, tracking_code).
+const FACT_ONELINK = `
+CREATE TABLE IF NOT EXISTS fact_onelink_daily (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  month TEXT NOT NULL,
+  tracking_code TEXT NOT NULL,
+  campaign_source TEXT NOT NULL,
+  campaign_label TEXT NOT NULL,
+  total INTEGER DEFAULT 0,
+  iphone INTEGER DEFAULT 0,
+  ipad INTEGER DEFAULT 0,
+  android INTEGER DEFAULT 0,
+  other INTEGER DEFAULT 0,
+  UNIQUE(date, tracking_code)
+);
+`;
+
+// Discount summary: one row per period + discount name.
+const FACT_DISCOUNT = `
+CREATE TABLE IF NOT EXISTS fact_discount_summary (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  period TEXT NOT NULL,
+  period_type TEXT NOT NULL,
+  discount_name TEXT NOT NULL,
+  discount_category TEXT NOT NULL,
+  usage_count INTEGER DEFAULT 0,
+  discount_amount REAL DEFAULT 0,
+  profitability REAL DEFAULT 0,
+  pct_of_total_sales REAL DEFAULT 0,
+  UNIQUE(period, discount_name)
+);
+`;
+
 // Monthly budgets: one row per month with category breakdown.
 const FACT_BUDGET = `
 CREATE TABLE IF NOT EXISTS fact_budget (
@@ -296,6 +366,73 @@ CREATE TABLE IF NOT EXISTS fact_budget (
   labor            REAL DEFAULT 0,
   sponsorship      REAL DEFAULT 0,
   other            REAL DEFAULT 0
+);
+`;
+
+// AMP campaigns: email + streaming (Sinclair / CTV).
+// INSERT OR REPLACE keyed on (month, campaign_type, campaign_name).
+const FACT_AMP_CAMPAIGN = `
+CREATE TABLE IF NOT EXISTS fact_amp_campaign (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  month TEXT NOT NULL,
+  campaign_type TEXT NOT NULL,
+  campaign_name TEXT NOT NULL,
+  location TEXT,
+  impressions INTEGER DEFAULT 0,
+  reach INTEGER DEFAULT 0,
+  frequency REAL DEFAULT 0,
+  sent INTEGER DEFAULT 0,
+  views INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  view_rate REAL DEFAULT 0,
+  click_rate REAL DEFAULT 0,
+  vcr REAL DEFAULT 0,
+  viewing_hours REAL DEFAULT 0,
+  UNIQUE(month, campaign_type, campaign_name)
+);
+`;
+
+// Lamar billboard monthly performance.
+// INSERT OR REPLACE keyed on (month, location).
+const FACT_BILLBOARD_MONTHLY = `
+CREATE TABLE IF NOT EXISTS fact_billboard_monthly (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  month TEXT NOT NULL,
+  location TEXT NOT NULL,
+  panel_id TEXT,
+  plays_guaranteed INTEGER DEFAULT 0,
+  plays_delivered INTEGER DEFAULT 0,
+  impressions_guaranteed REAL DEFAULT 0,
+  impressions_delivered REAL DEFAULT 0,
+  variance_pct REAL DEFAULT 0,
+  num_creatives INTEGER DEFAULT 0,
+  contracted_days INTEGER DEFAULT 0,
+  UNIQUE(month, location)
+);
+`;
+
+// Generic long-tail paid media channels (Yelp, TikTok, LinkedIn, etc.).
+// Channels big enough to warrant dedicated columns get their own table (see
+// fact_meta_campaign, fact_google_campaign, fact_amp_campaign). Everything
+// else lands here. Discriminated by the `source` column.
+// INSERT OR REPLACE keyed on (month, source, campaign_name).
+const FACT_OTHER_CAMPAIGN = `
+CREATE TABLE IF NOT EXISTS fact_other_campaign (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  month         TEXT NOT NULL,
+  source        TEXT NOT NULL,
+  campaign_name TEXT NOT NULL,
+  spend         REAL DEFAULT 0,
+  impressions   INTEGER DEFAULT 0,
+  clicks        INTEGER DEFAULT 0,
+  conversions   REAL DEFAULT 0,
+  ctr           REAL DEFAULT 0,
+  cpc           REAL DEFAULT 0,
+  cost_per_conv REAL DEFAULT 0,
+  window_start  TEXT,
+  window_end    TEXT,
+  extra         TEXT,
+  UNIQUE(month, source, campaign_name)
 );
 `;
 
@@ -349,8 +486,8 @@ CREATE INDEX IF NOT EXISTS idx_expense_month ON fact_expense(month);
 CREATE INDEX IF NOT EXISTS idx_meta_month ON fact_meta_campaign(month);
 CREATE INDEX IF NOT EXISTS idx_google_month ON fact_google_campaign(month);
 
--- Toast index: month-based revenue roll-ups
-CREATE INDEX IF NOT EXISTS idx_toast_month ON fact_toast_sales(month);
+-- Store sales index: month-based revenue roll-ups
+CREATE INDEX IF NOT EXISTS idx_store_sales_month ON fact_store_sales(month);
 
 -- Upload log: status-based queries (show pending uploads)
 CREATE INDEX IF NOT EXISTS idx_upload_status ON upload_log(status);
@@ -368,12 +505,18 @@ export const SCHEMA_STATEMENTS: string[] = [
   FACT_MENU,
   FACT_EXPENSE,
   FACT_META,
+  FACT_META_AD_SET,
   FACT_GOOGLE,
   FACT_GOOGLE_DAILY,
-  FACT_TOAST,
+  FACT_STORE_SALES,
   FACT_TOAST_DISCREPANCY,
   FACT_INCENTIVIO,
+  FACT_ONELINK,
+  FACT_DISCOUNT,
   FACT_BUDGET,
+  FACT_AMP_CAMPAIGN,
+  FACT_BILLBOARD_MONTHLY,
+  FACT_OTHER_CAMPAIGN,
   UPLOAD_LOG,
   SETTINGS,
   INDEXES,
@@ -387,12 +530,18 @@ export const TABLE_NAMES = [
   'fact_menu_item_snapshot',
   'fact_expense',
   'fact_meta_campaign',
+  'fact_meta_ad_set',
   'fact_google_campaign',
   'fact_google_daily',
-  'fact_toast_sales',
+  'fact_store_sales',
   'fact_toast_discrepancy',
   'fact_incentivio_metrics',
+  'fact_onelink_daily',
+  'fact_discount_summary',
   'fact_budget',
+  'fact_amp_campaign',
+  'fact_billboard_monthly',
+  'fact_other_campaign',
   'upload_log',
   'settings',
 ] as const;

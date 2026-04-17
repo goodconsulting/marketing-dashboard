@@ -15,20 +15,22 @@ export function KPICard({ label, value, change, changeLabel, subtitle, color = '
   const isNegative = change !== undefined && change < 0;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow">
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-        {label}
-        {tooltip && (
-          <span className="relative group inline-flex">
-            <Info size={12} className="text-amber-500 cursor-help" />
-            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-              {tooltip}
+    <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow min-h-[120px] flex flex-col justify-between h-full">
+      <div>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+          {label}
+          {tooltip && (
+            <span className="relative group inline-flex">
+              <Info size={12} className="text-amber-500 cursor-help" />
+              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-3 py-1.5 bg-gray-800 text-white text-[10px] leading-tight rounded max-w-[220px] text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                {tooltip}
+              </span>
             </span>
-          </span>
-        )}
-      </p>
-      <p className="text-2xl font-bold" style={{ color }}>{value}</p>
-      {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
+          )}
+        </p>
+        <p className="text-3xl font-bold" style={{ color }}>{value}</p>
+        {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
+      </div>
       {change !== undefined && (
         <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${
           isPositive ? 'text-emerald-600' : isNegative ? 'text-red-500' : 'text-gray-400'

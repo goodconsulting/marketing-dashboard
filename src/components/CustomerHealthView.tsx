@@ -1,7 +1,7 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, ReferenceLine,
 } from 'recharts';
 import { KPICard } from './KPICard';
 import { ExportButton } from './ExportButton';
@@ -209,6 +209,68 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
       .sort((a, b) => b.count - a.count);
   }, [customers]);
 
+  // ─── Signup Source MoM by Location ───
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const availableSources = useMemo(() => {
+    const s = new Set<string>();
+    customers.forEach(c => {
+      const raw = c.signupSource?.trim() || '';
+      if (raw && raw !== '-') s.add(normalizeSource(raw));
+    });
+    return Array.from(s).sort();
+  }, [customers]);
+
+  const LOCATION_COLORS: Record<string, string> = {
+    Waukee: '#2D5A3D', Coralville: '#3b82f6', Edgewood: '#f59e0b',
+    Fountains: '#8b5cf6', Downtown: '#ec4899',
+  };
+
+  const signupSourceMoM = useMemo(() => {
+    const active = customers.filter(c => c.lifetimeSpend > 0 || c.lifetimeVisits > 0);
+    const monthMap = new Map<string, Record<string, number>>();
+    const locations = new Set<string>();
+
+    active.forEach(c => {
+      if (!c.accountCreatedDate || c.accountCreatedDate === '-') return;
+      const month = c.accountCreatedDate.slice(0, 7);
+      if (!month.match(/^\d{4}-\d{2}$/) || month < '2025-06') return;
+
+      const raw = c.signupSource?.trim() || '';
+      if (raw === '-' || raw === '') return;
+      const source = normalizeSource(raw);
+      if (sourceFilter !== 'all' && source !== sourceFilter) return;
+
+      const loc = c.reachLocation || 'Unknown';
+      if (loc === 'Unknown') return;
+      locations.add(loc);
+
+      if (!monthMap.has(month)) monthMap.set(month, {});
+      const entry = monthMap.get(month)!;
+      entry[loc] = (entry[loc] || 0) + 1;
+    });
+
+    // Sort by raw month, compute totals and MoM %
+    const sorted = Array.from(monthMap.entries()).sort(([a], [b]) => a.localeCompare(b));
+    const allLocs = Array.from(locations).sort();
+    let prevTotal = 0;
+    const dataWithMoM = sorted.map(([month, locs], idx) => {
+      const total = allLocs.reduce((s, loc) => s + (locs[loc] || 0), 0);
+      const momPct = idx > 0 && prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
+      prevTotal = total;
+      return { month: formatMonth(month), ...locs, _total: total, _momPct: momPct };
+    });
+
+    // Compute historical MoM average (excluding first month which has no prior)
+    const momValues = dataWithMoM.filter(d => d._momPct !== null).map(d => d._momPct as number);
+    const momAvg = momValues.length > 0 ? momValues.reduce((s, v) => s + v, 0) / momValues.length : 0;
+
+    return {
+      data: dataWithMoM,
+      locations: allLocs,
+      momAvg: Math.round(momAvg * 10) / 10,
+    };
+  }, [customers, sourceFilter]);
+
   // ─── Segment Trend (from snapshots) ───
   const segmentTrend = useMemo(() =>
     snapshots
@@ -327,7 +389,27 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="location" width={100} tick={{ fontSize: 11 }} />
-                <Tooltip />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const segments = payload.filter(p => (p.value as number) > 0);
+                    const total = segments.reduce((s, p) => s + (p.value as number), 0);
+                    return (
+                      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm">
+                        <p className="font-semibold text-gray-800 mb-1">{label}</p>
+                        <p className="font-bold text-gray-900 border-b border-gray-100 pb-1.5 mb-1.5">
+                          Total: {total.toLocaleString()}
+                        </p>
+                        {segments.map((entry, i) => (
+                          <p key={i} className="flex justify-between gap-4 text-xs" style={{ color: entry.color }}>
+                            <span>{entry.name}</span>
+                            <span className="font-medium">{(entry.value as number).toLocaleString()} ({Math.round(((entry.value as number) / total) * 100)}%)</span>
+                          </p>
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="WHALE" stackId="a" name="Whale" fill={SEGMENT_COLORS.WHALE} />
                 <Bar dataKey="LOYALIST" stackId="a" name="Loyalist" fill={SEGMENT_COLORS.LOYALIST} />
@@ -496,6 +578,102 @@ export function CustomerHealthView({ customers, snapshots }: CustomerHealthViewP
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Signup Source MoM by Location */}
+      {signupSourceMoM.data.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Smartphone size={18} className="text-blue-500" />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700">Signups by Location (Monthly)</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">Active accounts by signup month and location</p>
+              </div>
+            </div>
+            <select
+              value={sourceFilter}
+              onChange={e => setSourceFilter(e.target.value)}
+              className="text-xs border border-gray-200 rounded-md px-2 py-1 text-gray-600"
+            >
+              <option value="all">All Sources</option>
+              {availableSources.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <ResponsiveContainer width="100%" height={360}>
+            <BarChart data={signupSourceMoM.data} margin={{ top: 28, right: 10, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const items = payload.filter(p => (p.value as number) > 0 && p.dataKey !== '_total');
+                  const dataPoint = signupSourceMoM.data.find(d => d.month === label);
+                  const total = dataPoint?._total ?? 0;
+                  const momPct = dataPoint?._momPct;
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm">
+                      <p className="font-semibold text-gray-800 mb-1">{label}</p>
+                      {items.map((entry, i) => (
+                        <p key={i} className="flex justify-between gap-4 text-xs" style={{ color: entry.color }}>
+                          <span>{entry.name}</span>
+                          <span className="font-medium">{(entry.value as number).toLocaleString()}</span>
+                        </p>
+                      ))}
+                      <p className="font-bold text-gray-900 border-t border-gray-100 pt-1.5 mt-1.5 flex justify-between">
+                        <span>Total</span>
+                        <span>{total.toLocaleString()}</span>
+                      </p>
+                      {momPct !== null && momPct !== undefined && (
+                        <p className={`text-xs mt-1 ${momPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          MoM: {momPct >= 0 ? '+' : ''}{momPct.toFixed(1)}%
+                          <span className="text-gray-400 ml-1">(vs prev month total)</span>
+                        </p>
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        Avg MoM: {signupSourceMoM.momAvg >= 0 ? '+' : ''}{signupSourceMoM.momAvg}%
+                      </p>
+                    </div>
+                  );
+                }}
+              />
+              <ReferenceLine y={0} stroke="transparent" />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {signupSourceMoM.locations.map((loc, idx) => {
+                const isLast = idx === signupSourceMoM.locations.length - 1;
+                return (
+                  <Bar key={loc} dataKey={loc} stackId="loc" name={loc} fill={LOCATION_COLORS[loc] || '#6b7280'}>
+                    {isLast && (
+                      <LabelList
+                        dataKey="_momPct"
+                        position="top"
+                        formatter={(v: unknown) => {
+                          if (v === null || v === undefined) return '';
+                          const n = Number(v);
+                          return `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+                        }}
+                        style={{ fontSize: 10, fontWeight: 700 }}
+                        fill="currentColor"
+                        content={({ x, y, width, value }: { x?: number; y?: number; width?: number; value?: unknown }) => {
+                          if (value === null || value === undefined) return null;
+                          const n = Number(value);
+                          const color = n >= 0 ? '#059669' : '#dc2626';
+                          const label = `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+                          return (
+                            <text x={(x || 0) + (width || 0) / 2} y={(y || 0) - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
+                              {label}
+                            </text>
+                          );
+                        }}
+                      />
+                    )}
+                  </Bar>
+                );
+              })}
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
 

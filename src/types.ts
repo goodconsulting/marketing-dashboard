@@ -10,7 +10,9 @@ export type DataSourceType =
   | 'organic'
   | '3po'
   | 'expenses'
-  | 'budget';
+  | 'budget'
+  | 'onelink'
+  | 'discount_summary';
 
 export interface MonthlyExpense {
   id: string;
@@ -41,6 +43,24 @@ export interface MetaCampaign {
   costPerResult: number;
 }
 
+export interface MetaAdSet {
+  month: string;
+  campaignName: string;
+  adSetName: string;
+  delivery: string;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  spend: number;
+  results: number;
+  resultType: string;
+  costPerResult: number;
+  landingPageViews: number;
+  cpm: number;
+  cpc: number;
+  ctr: number;
+}
+
 export interface GoogleCampaign {
   month: string;
   campaignName: string;
@@ -60,16 +80,28 @@ export interface GoogleDaily {
   cost: number;
 }
 
-export interface ToastSales {
+export interface StoreSales {
   month: string;
   location: string;
   grossSales: number;
   netSales: number;
   orders: number;
   discountTotal: number;
-  source?: 'api' | 'csv';   // Track data origin — API is source of truth
-  syncedAt?: string;         // ISO timestamp of when data was fetched
+  guests?: number;
+  tips?: number;
+  taxAmount?: number;
+  refunds?: number;
+  doordashSales?: number;
+  uberEatsSales?: number;
+  foodSales?: number;
+  smoothieSales?: number;
+  retailSales?: number;
+  source?: 'clover' | 'toast' | 'clover+toast';
+  syncedAt?: string;
 }
+
+/** @deprecated Use StoreSales instead */
+export type ToastSales = StoreSales;
 
 export interface ToastDiscrepancy {
   month: string;
@@ -238,6 +270,71 @@ export interface MenuIntelligenceItem {
   snapshotMonth: string;
 }
 
+export interface OneLinkDaily {
+  date: string;
+  month: string;
+  trackingCode: string;
+  campaignSource: string;
+  campaignLabel: string;
+  total: number;
+  iphone: number;
+  ipad: number;
+  android: number;
+  other: number;
+}
+
+// ─── AMP Campaigns (Email + Streaming) ───────────────────────────
+
+export interface AmpCampaign {
+  month: string;
+  campaignType: string;
+  campaignName: string;
+  location: string;
+  impressions: number;
+  reach: number;
+  frequency: number;
+  sent: number;
+  views: number;
+  clicks: number;
+  viewRate: number;
+  clickRate: number;
+  vcr: number;
+  viewingHours: number;
+}
+
+// ─── Billboard Monthly (Lamar) ───────────────────────────────────
+
+export interface BillboardMonthly {
+  month: string;
+  location: string;
+  panelId: string;
+  playsGuaranteed: number;
+  playsDelivered: number;
+  impressionsGuaranteed: number;
+  impressionsDelivered: number;
+  variancePct: number;
+  numCreatives: number;
+  contractedDays: number;
+}
+
+// ─── Other Campaigns (Yelp, TikTok, LinkedIn, long-tail) ─────────
+
+export interface OtherCampaign {
+  month: string;
+  source: string;            // 'yelp', 'tiktok', etc.
+  campaignName: string;      // e.g., store name for local channels
+  spend: number;
+  impressions: number;
+  clicks: number;            // page_visits for Yelp
+  conversions: number;       // leads for Yelp
+  ctr: number;
+  cpc: number;
+  costPerConv: number;
+  windowStart: string | null;
+  windowEnd: string | null;
+  extra: Record<string, unknown> | null;
+}
+
 export interface OrganicMetrics {
   month: string;
   platform: string;
@@ -326,6 +423,19 @@ export interface ConfirmResult {
   month: string;
 }
 
+// ─── Discount Summary ────────────────────────────────────────────
+
+export interface DiscountSummary {
+  period: string;
+  periodType: string;
+  discountName: string;
+  discountCategory: string;
+  usageCount: number;
+  discountAmount: number;
+  profitability: number;
+  pctOfTotalSales: number;
+}
+
 // ─── Dashboard State ─────────────────────────────────────────────
 
 export interface DashboardState {
@@ -344,6 +454,22 @@ export interface DashboardState {
   toastDiscrepancies: ToastDiscrepancy[];
 
   // Per-customer CRM records + menu intelligence
-  crmCustomers: CRMCustomerRecord[];
+  crmCustomers: CRMCustomerRecord[];           // active only (lifetime_spend > 0 or lifetime_visits > 0)
+  allCrmCustomers: CRMCustomerRecord[];         // all customers including ghost accounts
   menuIntelligence: MenuIntelligenceItem[];
+
+  // OneLink QR tracking
+  onelinkData: OneLinkDaily[];
+
+  // Discount summary
+  discountSummary: DiscountSummary[];
+
+  // AMP campaigns (email + streaming)
+  ampCampaigns: AmpCampaign[];
+
+  // Billboard (Lamar)
+  billboardData: BillboardMonthly[];
+
+  // Long-tail paid channels (Yelp, TikTok, LinkedIn, etc.)
+  otherCampaigns: OtherCampaign[];
 }

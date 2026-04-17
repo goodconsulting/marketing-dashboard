@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis, Cell,
+  PolarAngleAxis, PolarRadiusAxis, Cell, ComposedChart, Line, LabelList,
 } from 'recharts';
 import { KPICard } from './KPICard';
 import { ExportButton } from './ExportButton';
@@ -44,8 +44,19 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
+// Normalize CRM reachLocation to match store sales location names
+function normalizeCRMLocation(reachLoc: string, storeLocs: string[]): string {
+  if (storeLocs.includes(reachLoc)) return reachLoc;
+  const match = storeLocs.find(sl =>
+    sl.toLowerCase().includes(reachLoc.toLowerCase()) ||
+    reachLoc.toLowerCase().includes(sl.toLowerCase())
+  );
+  return match || reachLoc;
+}
+
 export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: LocationComparatorViewProps) {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [granularity, setGranularity] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
 
   // ─── Available Months ───
   const months = useMemo(() => {
@@ -76,7 +87,7 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
 
     return allLocations.map(location => {
       const locSales = filteredSales.filter(s => s.location === location);
-      const locCRM = filteredCRM.filter(c => c.reachLocation === location);
+      const locCRM = filteredCRM.filter(c => normalizeCRMLocation(c.reachLocation, allLocations) === location);
 
       const totalRevenue = locSales.reduce((s, r) => s + r.grossSales, 0);
       const totalOrders = locSales.reduce((s, r) => s + r.orders, 0);
@@ -171,6 +182,48 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
     });
   }, [months, allLocations, toastSales]);
 
+  // ─── Aggregated Trend Data (by granularity) ───
+  const aggregatedTrendData = useMemo(() => {
+    let baseData: Record<string, string | number>[];
+
+    if (granularity === 'monthly') {
+      baseData = monthlyTrendData;
+    } else {
+      const buckets = new Map<string, Record<string, number>>();
+
+      for (const row of monthlyTrendData) {
+        const m = row.month as string; // YYYY-MM
+        const [year, monthNum] = m.split('-');
+        let key: string;
+        if (granularity === 'quarterly') {
+          const q = Math.ceil(parseInt(monthNum) / 3);
+          key = `${year}-Q${q}`;
+        } else {
+          key = year;
+        }
+
+        if (!buckets.has(key)) buckets.set(key, {});
+        const bucket = buckets.get(key)!;
+        for (const loc of allLocations) {
+          bucket[loc] = (bucket[loc] || 0) + ((row[loc] as number) || 0);
+        }
+      }
+
+      baseData = Array.from(buckets.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([period, locs]) => ({ month: period, ...locs } as Record<string, string | number>));
+    }
+
+    // Add _total and _momPct
+    let prevTotal = 0;
+    return baseData.map((row, i) => {
+      const total = allLocations.reduce((s, loc) => s + ((row[loc] as number) || 0), 0);
+      const momPct = i > 0 && prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
+      prevTotal = total;
+      return { ...row, _total: total, _momPct: momPct };
+    });
+  }, [monthlyTrendData, granularity, allLocations]);
+
   const handleExport = useCallback((format: ExportFormat) => {
     exportData(locationKPIs as unknown as Record<string, unknown>[], {
       filename: `stack-locations-${todayString()}`,
@@ -195,17 +248,31 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Location Comparator</h2>
         <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            {(['monthly', 'quarterly', 'yearly'] as const).map(g => (
+              <button key={g} onClick={() => setGranularity(g)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  granularity === g ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {g === 'monthly' ? 'Monthly' : g === 'quarterly' ? 'Quarterly' : 'Yearly'}
+              </button>
+            ))}
+          </div>
           <ExportButton onExport={handleExport} />
-          <select
-          value={selectedMonth || ''}
-          onChange={e => setSelectedMonth(e.target.value || null)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600"
-        >
-          <option value="">All Time</option>
-          {months.map(m => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
+          {granularity === 'monthly' && (
+            <select
+              value={selectedMonth || ''}
+              onChange={e => setSelectedMonth(e.target.value || null)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600"
+            >
+              <option value="">All Months</option>
+              {months.map(m => {
+                const [y, mo] = m.split('-');
+                const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                return <option key={m} value={m}>{names[parseInt(mo) - 1]} {y}</option>;
+              })}
+            </select>
+          )}
         </div>
       </div>
 
@@ -286,26 +353,50 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
       </div>
 
       {/* Revenue Trend Over Time (stacked) */}
-      {monthlyTrendData.length > 1 && (
+      {aggregatedTrendData.length > 1 && (
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Monthly Revenue Trend by Location</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">
+            {granularity === 'monthly' ? 'Monthly' : granularity === 'quarterly' ? 'Quarterly' : 'Yearly'} Revenue Trend by Location
+          </h3>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={monthlyTrendData}>
+            <ComposedChart data={aggregatedTrendData} margin={{ top: 28, right: 10, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v)} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {allLocations.map(loc => (
-                <Bar
-                  key={loc}
-                  dataKey={loc}
-                  name={loc}
-                  stackId="revenue"
-                  fill={LOCATION_COLORS[loc] || DEFAULT_LOCATION_COLOR}
-                />
-              ))}
-            </BarChart>
+              <Tooltip formatter={(v: number, name: string) => name.startsWith('_') ? [null, null] : [formatCurrency(v), name]} />
+              <Legend wrapperStyle={{ fontSize: 11 }} payload={allLocations.map(loc => ({ value: loc, type: 'square' as const, color: LOCATION_COLORS[loc] || DEFAULT_LOCATION_COLOR }))} />
+              {allLocations.map((loc, idx) => {
+                const isLast = idx === allLocations.length - 1;
+                return (
+                  <Bar
+                    key={loc}
+                    dataKey={loc}
+                    name={loc}
+                    stackId="revenue"
+                    fill={LOCATION_COLORS[loc] || DEFAULT_LOCATION_COLOR}
+                  >
+                    {isLast && (
+                      <LabelList
+                        dataKey="_momPct"
+                        position="top"
+                        content={({ x, y, width, value }: { x?: number; y?: number; width?: number; value?: unknown }) => {
+                          if (value === null || value === undefined) return null;
+                          const n = Number(value);
+                          const color = n >= 0 ? '#059669' : '#dc2626';
+                          const label = `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+                          return (
+                            <text x={(x || 0) + (width || 0) / 2} y={(y || 0) - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
+                              {label}
+                            </text>
+                          );
+                        }}
+                      />
+                    )}
+                  </Bar>
+                );
+              })}
+              <Line type="monotone" dataKey="_total" stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 4" dot={false} legendType="none" />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       )}

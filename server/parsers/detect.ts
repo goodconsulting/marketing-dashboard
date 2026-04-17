@@ -40,11 +40,17 @@ export function detectSourceFromFilename(filename: string): DataSourceType | nul
   // Menu intelligence (also from Incentivio)
   if (lower.includes('menu_intelligence') || lower.includes('menuintelligence')) return 'incentivio_menu';
 
+  // OneLink QR tracking
+  if (lower.includes('onelinkto') || lower.includes('onelink')) return 'onelink';
+
   // Organic social
-  if (lower.includes('onelink') || lower.includes('organic') || lower.includes('review_analytics')) return 'organic';
+  if (lower.includes('organic') || lower.includes('review_analytics')) return 'organic';
 
   // 3rd party delivery
   if (lower.includes('uber') || lower.includes('doordash') || lower.includes('grubhub')) return '3po';
+
+  // Discount summary (XLSX)
+  if (lower.includes('discount') && lower.endsWith('.xlsx')) return 'discount_summary';
 
   // Budget
   if (lower.includes('budget') || lower.includes('operating budget')) return 'budget';

@@ -34,6 +34,7 @@ import {
   computeSnapshots,
   getExpenses,
   getMetaCampaigns,
+  getMetaAdSets,
   getGoogleCampaigns,
   getGoogleDaily,
   getToastSales,
@@ -44,6 +45,11 @@ import {
   getIncentivioMetrics,
   getBudgets,
   getAnnualBudgetForYear,
+  getOneLinkDaily,
+  getDiscountSummary,
+  getAmpCampaigns,
+  getBillboardMonthly,
+  getOtherCampaigns,
   getSetting,
   setSetting,
   clearAllData,
@@ -129,9 +135,15 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
       const googleDaily = getGoogleDaily();
       const toastSales = getToastSales();
       const crmCustomers = getLatestCRMCustomers();
+      const allCrmCustomers = getLatestCRMCustomers(undefined, false);
       const menuIntelligence = getMenuIntelligence();
       const incentivioMetrics = getIncentivioMetrics();
       const budgets = getBudgets();
+      const onelinkData = getOneLinkDaily();
+      const discountSummary = getDiscountSummary();
+      const ampCampaigns = getAmpCampaigns();
+      const billboardData = getBillboardMonthly();
+      const otherCampaigns = getOtherCampaigns();
       const uploads = getUploadLog();
       const currentYear = new Date().getFullYear().toString();
       const annualBudget = getAnnualBudgetForYear(currentYear);
@@ -144,9 +156,15 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
         googleDaily,
         toastSales,
         crmCustomers,
+        allCrmCustomers,
         menuIntelligence,
         incentivioMetrics,
         budgets,
+        onelinkData,
+        discountSummary,
+        ampCampaigns,
+        billboardData,
+        otherCampaigns,
         uploads,
         annualBudget,
       });
@@ -162,6 +180,15 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
     // ── Meta campaigns ───────────────────────────────────────────
     if (path === '/api/data/meta-campaigns') {
       json(res, 200, getMetaCampaigns(query.get('month') || undefined));
+      return;
+    }
+
+    // ── Meta ad sets ────────────────────────────────────────────
+    if (path === '/api/data/meta-ad-sets') {
+      json(res, 200, getMetaAdSets(
+        query.get('month') || undefined,
+        query.get('campaign') || undefined,
+      ));
       return;
     }
 
@@ -207,9 +234,39 @@ async function handleDataRequest(req: IncomingMessage, res: ServerResponse): Pro
       return;
     }
 
+    // ── OneLink QR tracking ─────────────────────────────────────
+    if (path === '/api/data/onelink') {
+      json(res, 200, getOneLinkDaily(query.get('month') || undefined));
+      return;
+    }
+
+    // ── AMP Campaigns ─────────────────────────────────────────────
+    if (path === '/api/data/amp-campaigns') {
+      json(res, 200, getAmpCampaigns(query.get('month') || undefined));
+      return;
+    }
+
+    // ── Billboard ────────────────────────────────────────────────
+    if (path === '/api/data/billboard') {
+      json(res, 200, getBillboardMonthly(query.get('month') || undefined));
+      return;
+    }
+
+    // ── Other Campaigns (Yelp, TikTok, etc.) ─────────────────────
+    if (path === '/api/data/other-campaigns') {
+      json(res, 200, getOtherCampaigns(query.get('month') || undefined));
+      return;
+    }
+
     // ── Budgets ──────────────────────────────────────────────────
     if (path === '/api/data/budgets') {
       json(res, 200, getBudgets());
+      return;
+    }
+
+    // ── Discount Summary ─────────────────────────────────────────
+    if (path === '/api/data/discount-summary') {
+      json(res, 200, getDiscountSummary(query.get('period') || undefined));
       return;
     }
   }

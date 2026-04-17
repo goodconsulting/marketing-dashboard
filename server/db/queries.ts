@@ -15,10 +15,10 @@
 import { getDb } from './connection.ts';
 import { SCHEMA_STATEMENTS, TABLE_NAMES } from './schema.ts';
 import type {
-  MonthlyExpense, MetaCampaign, GoogleCampaign, GoogleDaily,
-  ToastSales, IncentivioMetrics, MonthlyBudget, SpendCategory,
-  CRMCustomerRecord, MenuIntelligenceItem,
-  JourneyStage,
+  MonthlyExpense, MetaCampaign, MetaAdSet, GoogleCampaign, GoogleDaily,
+  StoreSales, IncentivioMetrics, MonthlyBudget, SpendCategory,
+  CRMCustomerRecord, MenuIntelligenceItem, OneLinkDaily,
+  DiscountSummary, JourneyStage, AmpCampaign, BillboardMonthly, OtherCampaign,
 } from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -223,14 +223,17 @@ export function insertGoogleDaily(daily: GoogleDaily[]): number {
   return inserted;
 }
 
-// ── Toast Sales ──────────────────────────────────────────────────────────
+// ── Store Sales (Clover + Toast) ─────────────────────────────────────────
 
-export function insertToastSales(sales: ToastSales[]): number {
+export function insertStoreSales(sales: StoreSales[]): number {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO fact_toast_sales
-    (month, location, gross_sales, net_sales, orders, discount_total, source, synced_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT OR REPLACE INTO fact_store_sales
+    (month, location, gross_sales, net_sales, orders, discount_total,
+     guests, tips, tax_amount, refunds,
+     doordash_sales, uber_eats_sales, food_sales, smoothie_sales, retail_sales,
+     source, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `);
 
   let inserted = 0;
@@ -240,12 +243,21 @@ export function insertToastSales(sales: ToastSales[]): number {
     for (const s of sales) {
       dimStmt.run(s.month);
       locStmt.run(s.location);
-      stmt.run(s.month, s.location, s.grossSales, s.netSales, s.orders, s.discountTotal, s.source || 'csv');
+      stmt.run(
+        s.month, s.location, s.grossSales, s.netSales, s.orders, s.discountTotal,
+        s.guests ?? 0, s.tips ?? 0, s.taxAmount ?? 0, s.refunds ?? 0,
+        s.doordashSales ?? 0, s.uberEatsSales ?? 0,
+        s.foodSales ?? 0, s.smoothieSales ?? 0, s.retailSales ?? 0,
+        s.source || 'csv'
+      );
       inserted++;
     }
   })();
   return inserted;
 }
+
+/** @deprecated Use insertStoreSales instead */
+export const insertToastSales = insertStoreSales;
 
 // ── CRM Customer Snapshot ────────────────────────────────────────────────
 // Strategy: DELETE all rows for the snapshot month, then INSERT fresh.
@@ -395,6 +407,31 @@ export function insertIncentivioMetrics(metrics: IncentivioMetrics): void {
   );
 }
 
+// ── OneLink QR Tracking ──────────────────────────────────────────────────
+
+export function insertOneLinkDaily(records: OneLinkDaily[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO fact_onelink_daily
+    (date, month, tracking_code, campaign_source, campaign_label, total, iphone, ipad, android, other)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  let inserted = 0;
+  db.transaction(() => {
+    const dimStmt = db.prepare('INSERT OR IGNORE INTO dim_month (month) VALUES (?)');
+    for (const r of records) {
+      dimStmt.run(r.month);
+      stmt.run(
+        r.date, r.month, r.trackingCode, r.campaignSource, r.campaignLabel,
+        r.total, r.iphone, r.ipad, r.android, r.other,
+      );
+      inserted++;
+    }
+  })();
+  return inserted;
+}
+
 // ── Budgets ──────────────────────────────────────────────────────────────
 
 export function insertBudgets(budgets: MonthlyBudget[]): number {
@@ -414,6 +451,29 @@ export function insertBudgets(budgets: MonthlyBudget[]): number {
         b.month, b.totalBudget,
         b.byCategory.paid_media, b.byCategory.direct_mail_print, b.byCategory.ooh,
         b.byCategory.software_fees, b.byCategory.labor, b.byCategory.sponsorship, b.byCategory.other,
+      );
+      inserted++;
+    }
+  })();
+  return inserted;
+}
+
+// ── Discount Summary ─────────────────────────────────────────────────────
+
+export function insertDiscountSummary(records: DiscountSummary[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO fact_discount_summary
+    (period, period_type, discount_name, discount_category, usage_count, discount_amount, profitability, pct_of_total_sales)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  let inserted = 0;
+  db.transaction(() => {
+    for (const r of records) {
+      stmt.run(
+        r.period, r.periodType, r.discountName, r.discountCategory,
+        r.usageCount, r.discountAmount, r.profitability, r.pctOfTotalSales,
       );
       inserted++;
     }
@@ -453,6 +513,58 @@ export function getMetaCampaigns(month?: string): MetaCampaign[] {
   }));
 }
 
+// ── Meta Ad Sets ──────────────────────────────────────────────────────────
+
+export function insertMetaAdSets(adSets: MetaAdSet[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO fact_meta_ad_set
+    (month, campaign_name, ad_set_name, delivery, impressions, reach, clicks,
+     spend, results, result_type, cost_per_result, landing_page_views, cpm, cpc, ctr)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  let inserted = 0;
+  db.transaction(() => {
+    for (const a of adSets) {
+      const result = stmt.run(
+        a.month, a.campaignName, a.adSetName, a.delivery, a.impressions, a.reach,
+        a.clicks, a.spend, a.results, a.resultType, a.costPerResult,
+        a.landingPageViews, a.cpm, a.cpc, a.ctr,
+      );
+      if (result.changes > 0) inserted++;
+    }
+  })();
+  return inserted;
+}
+
+export function getMetaAdSets(month?: string, campaignName?: string): MetaAdSet[] {
+  const db = getDb();
+  const conditions: string[] = [];
+  const params: string[] = [];
+  if (month) { conditions.push('month = ?'); params.push(month); }
+  if (campaignName) { conditions.push('campaign_name = ?'); params.push(campaignName); }
+  const where = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+  const rows = db.prepare(`SELECT * FROM fact_meta_ad_set${where}`).all(...params) as Array<Record<string, unknown>>;
+  return rows.map(r => ({
+    month: r.month as string,
+    campaignName: r.campaign_name as string,
+    adSetName: r.ad_set_name as string,
+    delivery: (r.delivery as string) || '',
+    impressions: (r.impressions as number) || 0,
+    reach: (r.reach as number) || 0,
+    clicks: (r.clicks as number) || 0,
+    spend: (r.spend as number) || 0,
+    results: (r.results as number) || 0,
+    resultType: (r.result_type as string) || '',
+    costPerResult: (r.cost_per_result as number) || 0,
+    landingPageViews: (r.landing_page_views as number) || 0,
+    cpm: (r.cpm as number) || 0,
+    cpc: (r.cpc as number) || 0,
+    ctr: (r.ctr as number) || 0,
+  }));
+}
+
 export function getGoogleCampaigns(month?: string): GoogleCampaign[] {
   const db = getDb();
   const query = month
@@ -489,21 +601,30 @@ export function getGoogleDaily(from?: string, to?: string): GoogleDaily[] {
   }));
 }
 
-export function getToastSales(month?: string): ToastSales[] {
+export function getStoreSales(month?: string): StoreSales[] {
   const db = getDb();
   const query = month
-    ? 'SELECT * FROM fact_toast_sales WHERE month = ?'
-    : 'SELECT * FROM fact_toast_sales';
+    ? 'SELECT * FROM fact_store_sales WHERE month = ?'
+    : 'SELECT * FROM fact_store_sales';
   const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
     month: string; location: string; gross_sales: number; net_sales: number;
-    orders: number; discount_total: number; source: string; synced_at: string;
+    orders: number; discount_total: number; guests: number; tips: number;
+    tax_amount: number; refunds: number; doordash_sales: number; uber_eats_sales: number;
+    food_sales: number; smoothie_sales: number; retail_sales: number;
+    source: string; synced_at: string;
   }>;
   return rows.map(r => ({
     month: r.month, location: r.location, grossSales: r.gross_sales,
     netSales: r.net_sales, orders: r.orders, discountTotal: r.discount_total,
-    source: r.source as 'api' | 'csv', syncedAt: r.synced_at,
+    guests: r.guests, tips: r.tips, taxAmount: r.tax_amount, refunds: r.refunds,
+    doordashSales: r.doordash_sales, uberEatsSales: r.uber_eats_sales,
+    foodSales: r.food_sales, smoothieSales: r.smoothie_sales, retailSales: r.retail_sales,
+    source: r.source as 'clover' | 'toast' | 'clover+toast', syncedAt: r.synced_at,
   }));
 }
+
+/** @deprecated Use getStoreSales instead */
+export const getToastSales = getStoreSales;
 
 export function getIncentivioMetrics(): IncentivioMetrics[] {
   const db = getDb();
@@ -515,6 +636,23 @@ export function getIncentivioMetrics(): IncentivioMetrics[] {
     month: r.month, totalLoyaltyAccounts: r.total_loyalty_accounts,
     newAccounts: r.new_accounts, avgOrderValue: r.avg_order_value,
     lifetimeVisits: r.lifetime_visits, last90DaysSpend: r.last_90_days_spend, ltv: r.ltv,
+  }));
+}
+
+export function getOneLinkDaily(month?: string): OneLinkDaily[] {
+  const db = getDb();
+  const query = month
+    ? 'SELECT * FROM fact_onelink_daily WHERE month = ? ORDER BY date'
+    : 'SELECT * FROM fact_onelink_daily ORDER BY date';
+  const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
+    date: string; month: string; tracking_code: string; campaign_source: string;
+    campaign_label: string; total: number; iphone: number; ipad: number;
+    android: number; other: number;
+  }>;
+  return rows.map(r => ({
+    date: r.date, month: r.month, trackingCode: r.tracking_code,
+    campaignSource: r.campaign_source, campaignLabel: r.campaign_label,
+    total: r.total, iphone: r.iphone, ipad: r.ipad, android: r.android, other: r.other,
   }));
 }
 
@@ -549,6 +687,172 @@ export function getBudgets(): MonthlyBudget[] {
       sponsorship: r.sponsorship || 0, other: r.other,
     },
   }));
+}
+
+export function getDiscountSummary(period?: string): DiscountSummary[] {
+  const db = getDb();
+  const query = period
+    ? 'SELECT * FROM fact_discount_summary WHERE period = ? ORDER BY discount_amount DESC'
+    : 'SELECT * FROM fact_discount_summary ORDER BY period, discount_amount DESC';
+  const rows = (period ? db.prepare(query).all(period) : db.prepare(query).all()) as Array<{
+    period: string; period_type: string; discount_name: string; discount_category: string;
+    usage_count: number; discount_amount: number; profitability: number; pct_of_total_sales: number;
+  }>;
+  return rows.map(r => ({
+    period: r.period,
+    periodType: r.period_type,
+    discountName: r.discount_name,
+    discountCategory: r.discount_category,
+    usageCount: r.usage_count,
+    discountAmount: r.discount_amount,
+    profitability: r.profitability,
+    pctOfTotalSales: r.pct_of_total_sales,
+  }));
+}
+
+// ── AMP Campaigns ─────────────────────────────────────────────────────────
+
+export function insertAmpCampaigns(records: AmpCampaign[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO fact_amp_campaign
+    (month, campaign_type, campaign_name, location, impressions, reach, frequency,
+     sent, views, clicks, view_rate, click_rate, vcr, viewing_hours)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  let inserted = 0;
+  db.transaction(() => {
+    const dimStmt = db.prepare('INSERT OR IGNORE INTO dim_month (month) VALUES (?)');
+    for (const r of records) {
+      dimStmt.run(r.month);
+      stmt.run(
+        r.month, r.campaignType, r.campaignName, r.location,
+        r.impressions, r.reach, r.frequency, r.sent, r.views, r.clicks,
+        r.viewRate, r.clickRate, r.vcr, r.viewingHours,
+      );
+      inserted++;
+    }
+  })();
+  return inserted;
+}
+
+export function getAmpCampaigns(month?: string): AmpCampaign[] {
+  const db = getDb();
+  const query = month
+    ? 'SELECT * FROM fact_amp_campaign WHERE month = ? ORDER BY month, campaign_type'
+    : 'SELECT * FROM fact_amp_campaign ORDER BY month, campaign_type';
+  const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
+    month: string; campaign_type: string; campaign_name: string; location: string;
+    impressions: number; reach: number; frequency: number; sent: number;
+    views: number; clicks: number; view_rate: number; click_rate: number;
+    vcr: number; viewing_hours: number;
+  }>;
+  return rows.map(r => ({
+    month: r.month, campaignType: r.campaign_type, campaignName: r.campaign_name,
+    location: r.location || '', impressions: r.impressions, reach: r.reach,
+    frequency: r.frequency, sent: r.sent, views: r.views, clicks: r.clicks,
+    viewRate: r.view_rate, clickRate: r.click_rate, vcr: r.vcr,
+    viewingHours: r.viewing_hours,
+  }));
+}
+
+// ── Billboard Monthly ─────────────────────────────────────────────────────
+
+export function insertBillboardMonthly(records: BillboardMonthly[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO fact_billboard_monthly
+    (month, location, panel_id, plays_guaranteed, plays_delivered,
+     impressions_guaranteed, impressions_delivered, variance_pct,
+     num_creatives, contracted_days)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  let inserted = 0;
+  db.transaction(() => {
+    const dimStmt = db.prepare('INSERT OR IGNORE INTO dim_month (month) VALUES (?)');
+    for (const r of records) {
+      dimStmt.run(r.month);
+      stmt.run(
+        r.month, r.location, r.panelId, r.playsGuaranteed, r.playsDelivered,
+        r.impressionsGuaranteed, r.impressionsDelivered, r.variancePct,
+        r.numCreatives, r.contractedDays,
+      );
+      inserted++;
+    }
+  })();
+  return inserted;
+}
+
+export function getBillboardMonthly(month?: string): BillboardMonthly[] {
+  const db = getDb();
+  const query = month
+    ? 'SELECT * FROM fact_billboard_monthly WHERE month = ? ORDER BY month'
+    : 'SELECT * FROM fact_billboard_monthly ORDER BY month';
+  const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
+    month: string; location: string; panel_id: string; plays_guaranteed: number;
+    plays_delivered: number; impressions_guaranteed: number; impressions_delivered: number;
+    variance_pct: number; num_creatives: number; contracted_days: number;
+  }>;
+  return rows.map(r => ({
+    month: r.month, location: r.location, panelId: r.panel_id || '',
+    playsGuaranteed: r.plays_guaranteed, playsDelivered: r.plays_delivered,
+    impressionsGuaranteed: r.impressions_guaranteed, impressionsDelivered: r.impressions_delivered,
+    variancePct: r.variance_pct, numCreatives: r.num_creatives,
+    contractedDays: r.contracted_days,
+  }));
+}
+
+// ── Other Campaigns (long-tail paid media) ────────────────────────────────
+
+export function insertOtherCampaigns(records: OtherCampaign[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO fact_other_campaign
+    (month, source, campaign_name, spend, impressions, clicks, conversions,
+     ctr, cpc, cost_per_conv, window_start, window_end, extra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  let inserted = 0;
+  db.transaction(() => {
+    const dimStmt = db.prepare('INSERT OR IGNORE INTO dim_month (month) VALUES (?)');
+    for (const r of records) {
+      dimStmt.run(r.month);
+      stmt.run(
+        r.month, r.source, r.campaignName, r.spend, r.impressions,
+        r.clicks, r.conversions, r.ctr, r.cpc, r.costPerConv,
+        r.windowStart, r.windowEnd,
+        r.extra ? JSON.stringify(r.extra) : null,
+      );
+      inserted++;
+    }
+  })();
+  return inserted;
+}
+
+export function getOtherCampaigns(month?: string): OtherCampaign[] {
+  const db = getDb();
+  const query = month
+    ? 'SELECT * FROM fact_other_campaign WHERE month = ? ORDER BY source, campaign_name'
+    : 'SELECT * FROM fact_other_campaign ORDER BY month, source, campaign_name';
+  const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
+    month: string; source: string; campaign_name: string; spend: number;
+    impressions: number; clicks: number; conversions: number;
+    ctr: number; cpc: number; cost_per_conv: number;
+    window_start: string | null; window_end: string | null; extra: string | null;
+  }>;
+  return rows.map(r => ({
+    month: r.month, source: r.source, campaignName: r.campaign_name,
+    spend: r.spend, impressions: r.impressions, clicks: r.clicks,
+    conversions: r.conversions, ctr: r.ctr, cpc: r.cpc, costPerConv: r.cost_per_conv,
+    windowStart: r.window_start, windowEnd: r.window_end,
+    extra: r.extra ? safeJsonParse(r.extra) : null,
+  }));
+}
+
+function safeJsonParse(s: string): Record<string, unknown> | null {
+  try { return JSON.parse(s) as Record<string, unknown>; } catch { return null; }
 }
 
 /**
@@ -773,12 +1077,12 @@ export function computeSnapshots(): MonthlySnapshot[] {
     s.budgetedSpend = r.total_budget;
   }
 
-  // 3. Toast revenue by month + location
-  const toastRows = db.prepare(
-    'SELECT month, location, gross_sales, orders FROM fact_toast_sales'
-  ).all() as Array<{ month: string; location: string; gross_sales: number; orders: number }>;
+  // 3. Store sales revenue by month + location (Clover + Toast combined)
+  const storeRows = db.prepare(
+    'SELECT month, location, gross_sales, net_sales, orders FROM fact_store_sales'
+  ).all() as Array<{ month: string; location: string; gross_sales: number; net_sales: number; orders: number }>;
 
-  for (const r of toastRows) {
+  for (const r of storeRows) {
     const s = getSnap(r.month);
     s.totalRevenue += r.gross_sales;
     s.totalOrders += r.orders;
@@ -1001,7 +1305,7 @@ export function clearAllData(): void {
     db.exec('DELETE FROM fact_meta_campaign');
     db.exec('DELETE FROM fact_google_campaign');
     db.exec('DELETE FROM fact_google_daily');
-    db.exec('DELETE FROM fact_toast_sales');
+    db.exec('DELETE FROM fact_store_sales');
     db.exec('DELETE FROM fact_toast_discrepancy');
     db.exec('DELETE FROM fact_incentivio_metrics');
     db.exec('DELETE FROM fact_budget');

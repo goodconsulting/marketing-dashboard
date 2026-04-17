@@ -7,10 +7,11 @@
  */
 
 import type {
-  MonthlyExpense, MetaCampaign, GoogleCampaign,
+  MonthlyExpense, MetaCampaign, MetaAdSet, GoogleCampaign,
   GoogleDaily, ToastSales, MonthlyBudget, CRMCustomerRecord,
   MenuIntelligenceItem, IncentivioMetrics, UploadedFile,
-  MonthlySnapshot, UploadPreview, ConfirmResult,
+  MonthlySnapshot, UploadPreview, ConfirmResult, OneLinkDaily,
+  DiscountSummary, AmpCampaign, BillboardMonthly, OtherCampaign,
 } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -42,9 +43,15 @@ export interface ServerState {
   googleDaily: GoogleDaily[];
   toastSales: ToastSales[];
   crmCustomers: CRMCustomerRecord[];
+  allCrmCustomers: CRMCustomerRecord[];
   menuIntelligence: MenuIntelligenceItem[];
   incentivioMetrics: IncentivioMetrics[];
   budgets: MonthlyBudget[];
+  onelinkData: OneLinkDaily[];
+  discountSummary: DiscountSummary[];
+  ampCampaigns: AmpCampaign[];
+  billboardData: BillboardMonthly[];
+  otherCampaigns: OtherCampaign[];
   uploads: UploadedFile[];
   annualBudget: number;
 }
@@ -68,6 +75,10 @@ export function fetchExpenses(month?: string): Promise<MonthlyExpense[]> {
 
 export function fetchMetaCampaigns(month?: string): Promise<MetaCampaign[]> {
   return fetchJson<MetaCampaign[]>('/api/data/meta-campaigns' + qs({ month }));
+}
+
+export function fetchMetaAdSets(month?: string, campaign?: string): Promise<MetaAdSet[]> {
+  return fetchJson<MetaAdSet[]>('/api/data/meta-ad-sets' + qs({ month, campaign }));
 }
 
 export function fetchGoogleCampaigns(month?: string): Promise<GoogleCampaign[]> {
@@ -96,6 +107,22 @@ export function fetchIncentivioMetrics(): Promise<IncentivioMetrics[]> {
 
 export function fetchBudgets(): Promise<MonthlyBudget[]> {
   return fetchJson<MonthlyBudget[]>('/api/data/budgets');
+}
+
+export function fetchOneLinkDaily(month?: string): Promise<OneLinkDaily[]> {
+  return fetchJson<OneLinkDaily[]>('/api/data/onelink' + qs({ month }));
+}
+
+export function fetchDiscountSummary(period?: string): Promise<DiscountSummary[]> {
+  return fetchJson<DiscountSummary[]>('/api/data/discount-summary' + qs({ period }));
+}
+
+export function fetchAmpCampaigns(month?: string): Promise<AmpCampaign[]> {
+  return fetchJson<AmpCampaign[]>('/api/data/amp-campaigns' + qs({ month }));
+}
+
+export function fetchBillboardMonthly(month?: string): Promise<BillboardMonthly[]> {
+  return fetchJson<BillboardMonthly[]>('/api/data/billboard' + qs({ month }));
 }
 
 export function fetchUploads(): Promise<UploadedFile[]> {

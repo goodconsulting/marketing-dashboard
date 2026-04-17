@@ -11,3 +11,5 @@ export { parseMetaCampaigns } from './meta.ts';
 export { parseGoogleCampaigns, parseGoogleDaily, isGoogleCampaignReport } from './google.ts';
 export { parseToastCSV } from './toast.ts';
 export { parseBudgetXLSX } from './budget.ts';
+export { parseOneLinkDaily } from './onelink.ts';
+export { parseDiscountSummary } from './discountSummary.ts';
