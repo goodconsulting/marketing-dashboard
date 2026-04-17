@@ -10,11 +10,14 @@
  */
 
 import Database from 'better-sqlite3';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { mkdirSync } from 'fs';
 
-const DB_DIR = join(process.cwd(), 'data');
-const DB_PATH = join(DB_DIR, 'stack.db');
+// DB_PATH env var wins (production — prod container sets it to /data/stack.db
+// pointing at a Fly persistent volume). Falls back to ./data/stack.db relative
+// to process.cwd() for local dev.
+const DB_PATH = process.env.DB_PATH || join(process.cwd(), 'data', 'stack.db');
+const DB_DIR = dirname(DB_PATH);
 
 let instance: Database.Database | null = null;
 
