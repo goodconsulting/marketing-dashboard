@@ -66,12 +66,20 @@ const expected = [
 function runBackfill(snapshotMap) {
   const ordered = Object.keys(snapshotMap).sort();
   const all = [];
+  // Cumulative "last known state" per customer across all prior snapshots.
+  // Semantics: if Incentivio trims a customer from the export for a month,
+  // the next time they appear we compare against their last observed state,
+  // not treating them as first_seen again.
+  const lastKnown = new Map();
   for (let i = 0; i < ordered.length; i++) {
-    const prevMonth = i === 0 ? null : ordered[i - 1];
     const currMonth = ordered[i];
-    const prev = prevMonth ? snapshotMap[prevMonth] : [];
     const curr = snapshotMap[currMonth];
-    all.push(...deriveStageTransitions(prev, curr, prevMonth, currMonth));
+    const prevMonth = i === 0 ? null : ordered[i - 1];
+    // prevRows = all customers ever seen, with their most recent snapshot row
+    const prevRows = Array.from(lastKnown.values());
+    all.push(...deriveStageTransitions(prevRows, curr, prevMonth, currMonth));
+    // Update lastKnown with this snapshot's rows
+    for (const r of curr) lastKnown.set(r.customer_id, r);
   }
   return all;
 }
