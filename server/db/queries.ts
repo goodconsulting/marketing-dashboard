@@ -19,6 +19,7 @@ import type {
   StoreSales, IncentivioMetrics, MonthlyBudget, SpendCategory,
   CRMCustomerRecord, MenuIntelligenceItem, OneLinkDaily,
   DiscountSummary, JourneyStage, AmpCampaign, BillboardMonthly, OtherCampaign,
+  StageTransition,
 } from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -849,6 +850,111 @@ export function getOtherCampaigns(month?: string): OtherCampaign[] {
     windowStart: r.window_start, windowEnd: r.window_end,
     extra: r.extra ? safeJsonParse(r.extra) : null,
   }));
+}
+
+// ── Stage Transitions ─────────────────────────────────────────────────────
+
+export function insertStageTransitions(records: StageTransition[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO fact_stage_transition
+    (customer_id, from_stage, to_stage, direction, from_snapshot, to_snapshot,
+     days_in_from_stage, spend_in_from_stage, visits_in_from_stage,
+     from_lifetime_spend, to_lifetime_spend, from_lifetime_visits, to_lifetime_visits,
+     estimated_transition_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  let inserted = 0;
+  db.transaction(() => {
+    for (const r of records) {
+      stmt.run(
+        r.customerId, r.fromStage, r.toStage, r.direction,
+        r.fromSnapshot, r.toSnapshot,
+        r.daysInFromStage, r.spendInFromStage, r.visitsInFromStage,
+        r.fromLifetimeSpend, r.toLifetimeSpend,
+        r.fromLifetimeVisits, r.toLifetimeVisits,
+        r.estimatedTransitionDate,
+      );
+      inserted++;
+    }
+  })();
+  return inserted;
+}
+
+export function deleteStageTransitionsForSnapshot(toSnapshot: string): number {
+  const db = getDb();
+  const r = db.prepare('DELETE FROM fact_stage_transition WHERE to_snapshot = ?').run(toSnapshot);
+  return r.changes;
+}
+
+export function getStageTransitions(limit = 5000): StageTransition[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT * FROM fact_stage_transition
+    ORDER BY detected_at DESC, id DESC
+    LIMIT ?
+  `).all(limit) as Array<Record<string, unknown>>;
+  return rows.map(rowToStageTransition);
+}
+
+function rowToStageTransition(r: Record<string, unknown>): StageTransition {
+  return {
+    customerId: r.customer_id as string,
+    fromStage: r.from_stage as string,
+    toStage: r.to_stage as string,
+    direction: r.direction as StageTransition['direction'],
+    fromSnapshot: r.from_snapshot as string,
+    toSnapshot: r.to_snapshot as string,
+    daysInFromStage: r.days_in_from_stage as number | null,
+    spendInFromStage: r.spend_in_from_stage as number | null,
+    visitsInFromStage: r.visits_in_from_stage as number | null,
+    fromLifetimeSpend: r.from_lifetime_spend as number | null,
+    toLifetimeSpend: r.to_lifetime_spend as number | null,
+    fromLifetimeVisits: r.from_lifetime_visits as number | null,
+    toLifetimeVisits: r.to_lifetime_visits as number | null,
+    estimatedTransitionDate: r.estimated_transition_date as string | null,
+  };
+}
+
+/** Count of transitions grouped by (from_stage, to_stage) for matrix rendering. */
+export function getStageTransitionMatrix(): Array<{
+  from_stage: string; to_stage: string; direction: string; count: number;
+}> {
+  const db = getDb();
+  return db.prepare(`
+    SELECT from_stage, to_stage, direction, COUNT(*) AS count
+    FROM fact_stage_transition
+    WHERE direction != 'first_seen'
+    GROUP BY from_stage, to_stage, direction
+    ORDER BY count DESC
+  `).all() as Array<{ from_stage: string; to_stage: string; direction: string; count: number }>;
+}
+
+/** Aggregate stats per from_stage (dwell time + economics). */
+export function getStageStats(): Array<{
+  from_stage: string;
+  n: number;
+  median_days: number | null;
+  avg_spend: number | null;
+  avg_visits: number | null;
+}> {
+  const db = getDb();
+  // SQLite doesn't have MEDIAN; approximate with percentile via window.
+  return db.prepare(`
+    WITH ranked AS (
+      SELECT from_stage, days_in_from_stage, spend_in_from_stage, visits_in_from_stage,
+             ROW_NUMBER() OVER (PARTITION BY from_stage ORDER BY days_in_from_stage) AS rn,
+             COUNT(*) OVER (PARTITION BY from_stage) AS cnt
+      FROM fact_stage_transition
+      WHERE direction != 'first_seen' AND days_in_from_stage IS NOT NULL
+    )
+    SELECT from_stage,
+           cnt AS n,
+           MAX(CASE WHEN rn = (cnt + 1) / 2 THEN days_in_from_stage END) AS median_days,
+           AVG(spend_in_from_stage) AS avg_spend,
+           AVG(visits_in_from_stage) AS avg_visits
+    FROM ranked GROUP BY from_stage, cnt
+  `).all() as Array<{ from_stage: string; n: number; median_days: number | null; avg_spend: number | null; avg_visits: number | null }>;
 }
 
 function safeJsonParse(s: string): Record<string, unknown> | null {
