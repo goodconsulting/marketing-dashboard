@@ -110,6 +110,26 @@ if (actual.length !== expected.length) {
   failures++;
 }
 
+// Additional assertion: days_in_from_stage computed for Customer C's Jan→Feb (REGULAR→LOYALIST)
+// C's Jan transition estimated date = midpoint(Oct-15, Jan-15) ≈ Nov 30
+// C's Feb transition estimated date = midpoint(Jan-15, Feb-15) ≈ Jan 30
+// Days = ~61
+const { computeDaysInStage } = require('../server/lib/stage-transitions.cjs');
+const accountCreated = new Map();
+for (const rows of Object.values(snapshots)) {
+  for (const r of rows) if (r.account_created_date) accountCreated.set(r.customer_id, r.account_created_date);
+}
+computeDaysInStage(actual, accountCreated);
+
+const cFebTransition = actual.find(a => a.customer_id === 'C' && a.to_snapshot === '2026-02');
+if (!cFebTransition || cFebTransition.days_in_from_stage === null) {
+  console.error('Customer C\'s Jan→Feb transition should have days_in_from_stage computed');
+  failures++;
+} else if (cFebTransition.days_in_from_stage < 45 || cFebTransition.days_in_from_stage > 75) {
+  console.error(`Customer C days_in_from_stage expected 45-75, got ${cFebTransition.days_in_from_stage}`);
+  failures++;
+}
+
 if (failures > 0) {
   console.error(`\n${failures} failure(s)`);
   process.exit(1);

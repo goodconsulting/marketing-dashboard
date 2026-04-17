@@ -122,3 +122,50 @@ module.exports = {
   normalizeStage,
   deriveStageTransitions,
 };
+
+/**
+ * Given the complete transition history for a set of customers, fill in
+ * days_in_from_stage by chaining consecutive transitions per customer.
+ *
+ * For the first transition of each customer: use account_created_date if
+ * available from the customer's first snapshot row, else leave NULL.
+ *
+ * Mutates the input array (sets days_in_from_stage on each row).
+ *
+ * @param {Array} transitions - sorted chronologically
+ * @param {Map<string, string>} accountCreatedByCustomer - customer_id → YYYY-MM-DD
+ */
+function computeDaysInStage(transitions, accountCreatedByCustomer) {
+  // Group by customer and walk in chronological order
+  const byCustomer = new Map();
+  for (const t of transitions) {
+    if (!byCustomer.has(t.customer_id)) byCustomer.set(t.customer_id, []);
+    byCustomer.get(t.customer_id).push(t);
+  }
+
+  for (const [customerId, rows] of byCustomer) {
+    rows.sort((a, b) => a.to_snapshot.localeCompare(b.to_snapshot));
+    const createdDate = accountCreatedByCustomer.get(customerId);
+
+    let prevTransitionDate = createdDate || null;
+
+    for (const t of rows) {
+      if (t.direction === 'first_seen') {
+        // Can't compute days_in_from_stage for first_seen (unknown prior state)
+        prevTransitionDate = t.estimated_transition_date || prevTransitionDate;
+        continue;
+      }
+      if (t.estimated_transition_date && prevTransitionDate) {
+        const ms = new Date(t.estimated_transition_date + 'T00:00:00Z').getTime()
+                 - new Date(prevTransitionDate + 'T00:00:00Z').getTime();
+        const days = Math.round(ms / 86400000);
+        t.days_in_from_stage = days >= 0 ? days : null;
+      }
+      prevTransitionDate = t.estimated_transition_date || prevTransitionDate;
+    }
+  }
+
+  return transitions;
+}
+
+module.exports.computeDaysInStage = computeDaysInStage;
