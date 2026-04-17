@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Line, Legend, ComposedChart, Area, PieChart, Pie, Cell, LabelList,
 } from 'recharts';
 import { KPICard } from './KPICard';
@@ -183,7 +183,6 @@ function LTVCACTooltip({ active, payload, label }: any) {
 
 export function AttributionView({ snapshots, customers, allCustomers, discountSummary, stageTransitions }: AttributionViewProps) {
   const latest = snapshots[snapshots.length - 1];
-  const previous = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
 
   // Build month → new-customer count from CRM records (ground truth)
   const crmNewByMonth = useMemo(() => {
@@ -686,13 +685,16 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
                 <LabelList
                   dataKey="_momPct"
                   position="top"
-                  content={({ x, y, width, value }: { x?: number; y?: number; width?: number; value?: unknown }) => {
+                  content={({ x, y, width, value }: { x?: string | number; y?: string | number; width?: string | number; value?: unknown }) => {
                     if (value === null || value === undefined) return null;
                     const n = Number(value);
                     const color = n >= 0 ? '#059669' : '#dc2626';
                     const label = `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+                    const xn = typeof x === 'number' ? x : Number(x) || 0;
+                    const yn = typeof y === 'number' ? y : Number(y) || 0;
+                    const wn = typeof width === 'number' ? width : Number(width) || 0;
                     return (
-                      <text x={(x || 0) + (width || 0) / 2} y={(y || 0) - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
+                      <text x={xn + wn / 2} y={yn - 6} textAnchor="middle" fill={color} fontSize={10} fontWeight={700}>
                         {label}
                       </text>
                     );
@@ -846,7 +848,7 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
             <Bar yAxisId="left" dataKey="cac" name="CAC" fill="#ef4444" radius={[4,4,0,0]} />
             <Area yAxisId="right" type="monotone" dataKey="roi" fill="#dcfce7" stroke="none" name="ROI Area" legendType="none" />
             <Line yAxisId="right" type="monotone" dataKey="roi" name="ROI" stroke="#2D5A3D" strokeWidth={3} dot={{ r: 4, fill: '#2D5A3D' }}>
-              <LabelList dataKey="roi" position="top" formatter={(v: number) => `${(v / 100).toFixed(1)}x`} style={{ fontSize: 10, fill: '#2D5A3D', fontWeight: 600 }} />
+              <LabelList dataKey="roi" position="top" formatter={(v) => `${((Number(v) || 0) / 100).toFixed(1)}x`} style={{ fontSize: 10, fill: '#2D5A3D', fontWeight: 600 }} />
             </Line>
           </ComposedChart>
         </ResponsiveContainer>
@@ -1082,7 +1084,7 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
                   <ReferenceLine yAxisId="left" y={discountTrendData.reduce((s, d) => s + d.discountPct, 0) / discountTrendData.length} stroke="#a78bfa" strokeDasharray="5 5" label={{ value: 'Avg', fill: '#a78bfa', fontSize: 10 }} />
                   <Bar yAxisId="right" dataKey="totalDiscount" name="Total Discounts ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} opacity={0.6} />
                   <Line yAxisId="left" type="monotone" dataKey="discountPct" name="Discount % of Gross Sales" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4, fill: '#8b5cf6' }}>
-                    <LabelList dataKey="discountPct" position="top" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fill: '#8b5cf6', fontWeight: 600 }} />
+                    <LabelList dataKey="discountPct" position="top" formatter={(v) => `${(Number(v) || 0).toFixed(1)}%`} style={{ fontSize: 10, fill: '#8b5cf6', fontWeight: 600 }} />
                   </Line>
                 </ComposedChart>
               </ResponsiveContainer>

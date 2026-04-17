@@ -473,7 +473,7 @@ export function OverviewView({ snapshots, annualBudget, customers, ampCampaigns 
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
             <YAxis yAxisId="left" tick={{ fontSize: 12 }} tickFormatter={(v) => formatCurrency(v)} />
             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} />
-            <Tooltip formatter={(v: number, name: string) => name === 'Spend % of Revenue' ? `${v}%` : formatCurrency(v)} />
+            <Tooltip formatter={(v, name) => { const n = Number(v) || 0; return name === 'Spend % of Revenue' ? `${n}%` : formatCurrency(n); }} />
             <Legend />
             <Bar yAxisId="left" dataKey="revenue" name="Gross Revenue" fill="#7CB342" radius={[4,4,0,0]} />
             <Bar yAxisId="left" dataKey="spend" name="Marketing Spend" fill="#2D5A3D" radius={[4,4,0,0]} />

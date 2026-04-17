@@ -1073,13 +1073,15 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, onelinkData, a
                   />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip
-                    labelFormatter={(d: string) => {
-                      const dt = new Date(d + 'T00:00:00');
+                    labelFormatter={(d) => {
+                      const s = typeof d === 'string' ? d : String(d ?? '');
+                      if (!s) return '';
+                      const dt = new Date(s + 'T00:00:00');
                       return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     }}
-                    formatter={(value: number, name: string) => [
-                      formatNumber(value),
-                      onelinkLabelMap.get(name) || name,
+                    formatter={(value, name) => [
+                      formatNumber(Number(value) || 0),
+                      onelinkLabelMap.get(name as string) || (name as string),
                     ]}
                   />
                   <Legend formatter={(value: string) => onelinkLabelMap.get(value) || value} />
@@ -1110,9 +1112,9 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, onelinkData, a
                   <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip
-                    formatter={(value: number, name: string) => [
-                      formatNumber(value),
-                      onelinkLabelMap.get(name) || name,
+                    formatter={(value, name) => [
+                      formatNumber(Number(value) || 0),
+                      onelinkLabelMap.get(name as string) || (name as string),
                     ]}
                   />
                   <Legend formatter={(value: string) => onelinkLabelMap.get(value) || value} />
