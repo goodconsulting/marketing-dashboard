@@ -211,42 +211,22 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
     CHURNED: 0, SLIDER: 3, UNKNOWN: 6,
   };
 
-  // Per-stage minimum sample size for trusting the observed median dwell time.
-  // Thresholds reflect how rare each stage is (WHALE is naturally tiny population).
-  const RETENTION_SAMPLE_THRESHOLDS: Record<string, number> = {
-    ROOKIE: 200, REGULAR: 100, LOYALIST: 50, WHALE: 20,
-    CHURNED: 0, SLIDER: 0, UNKNOWN: 0,
-  };
-
-  // Observed retention (median days-in-stage → months) with sample-size-gated fallback.
-  const observedRetention = useMemo(() => {
-    const out: Record<string, { months: number; n: number; source: 'observed' | 'fallback' }> = {};
-    for (const stage of Object.keys(HARDCODED_RETENTION_MONTHS)) {
-      const samples = stageTransitions
-        .filter(t => t.fromStage === stage && t.daysInFromStage !== null && t.direction !== 'first_seen')
-        .map(t => t.daysInFromStage as number);
-      const n = samples.length;
-      const threshold = RETENTION_SAMPLE_THRESHOLDS[stage] ?? 100;
-      if (threshold > 0 && n >= threshold) {
-        samples.sort((a, b) => a - b);
-        const medianDays = samples[Math.floor(n / 2)];
-        out[stage] = { months: medianDays / 30, n, source: 'observed' };
-      } else {
-        out[stage] = { months: HARDCODED_RETENTION_MONTHS[stage], n, source: 'fallback' };
-      }
-    }
-    return out;
-  }, [stageTransitions]);
-
+  // LTV uses HARDCODED retention (not observed). Observed retention is currently
+  // censored — we only see customers who EXIT a stage, never those still in it,
+  // which biases the observed median low and flips ROI negative in exec decks.
+  // Kaplan-Meier-style survival analysis is backlogged for when we have 6+
+  // snapshots (roughly August 2026). Until then, LTV stays on assumed retention
+  // and the "Retention Reality Check" panel below shows the observed/assumed gap
+  // so the calibration drift is visible without being load-bearing.
   const overallProjectedLTV = useMemo(() => {
     const active = customers.filter(c => c.lifetimeSpend > 0 && c.lifetimeVisits > 0);
     if (active.length === 0) return 0;
     const total = active.reduce((sum, c) => {
-      const retention = observedRetention[c.journeyStage]?.months ?? 6;
+      const retention = HARDCODED_RETENTION_MONTHS[c.journeyStage] ?? 6;
       return sum + c.avgBasketValue * c.purchasesPerMonth * retention;
     }, 0);
     return total / active.length;
-  }, [customers, observedRetention]);
+  }, [customers]);
 
   const cacTrend = useMemo(() =>
     snapshots
@@ -851,15 +831,8 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
           LTV vs CAC
           {ltvData.some(d => d.isEstimated) && <EstimatedBadge />}
         </h3>
-        <p className="text-xs text-gray-400 mb-1">
-          Estimated LTV = Avg Basket &times; Purchases/Mo &times; Retention Months (by stage) &middot; Weighted avg across {customers.filter(c => c.lifetimeVisits > 0).length.toLocaleString()} active accounts
-        </p>
-        <p className="text-[10px] text-gray-400 mb-4">
-          Retention: {['ROOKIE','REGULAR','LOYALIST','WHALE'].map(s => {
-            const r = observedRetention[s];
-            if (!r) return null;
-            return `${s}: ${r.months.toFixed(1)}mo ${r.source === 'observed' ? `(observed, n=${r.n})` : '(fallback)'}`;
-          }).filter(Boolean).join(' · ')}
+        <p className="text-xs text-gray-400 mb-4">
+          Estimated LTV = Avg Basket &times; Purchases/Mo &times; Retention Months (assumed, by stage) &middot; Weighted avg across {customers.filter(c => c.lifetimeVisits > 0).length.toLocaleString()} active accounts
         </p>
         <ResponsiveContainer width="100%" height={340}>
           <ComposedChart data={ltvData}>
@@ -877,6 +850,56 @@ export function AttributionView({ snapshots, customers, allCustomers, discountSu
             </Line>
           </ComposedChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Retention Reality Check — observed vs. assumed. Not load-bearing on LTV. */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-gray-700">Retention Reality Check</h3>
+          <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Diagnostic — not used for LTV</span>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          LTV above uses <strong>assumed</strong> retention (industry defaults). Below shows what we've actually <strong>observed</strong> so far. The gap is expected early-on — our data only captures customers who've <em>exited</em> a stage, so long-tenure stages look artificially short. Kaplan-Meier survival correction is backlogged for when we have ≥6 snapshots.
+        </p>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-100">
+              <th className="pb-2">Stage</th>
+              <th className="pb-2 text-right">Assumed</th>
+              <th className="pb-2 text-right">Observed Median</th>
+              <th className="pb-2 text-right">Sample (n)</th>
+              <th className="pb-2 text-right">Gap</th>
+            </tr>
+          </thead>
+          <tbody>
+            {['ROOKIE', 'REGULAR', 'LOYALIST', 'WHALE'].map(s => {
+              const samples = stageTransitions
+                .filter(t => t.fromStage === s && t.daysInFromStage !== null && t.direction !== 'first_seen')
+                .map(t => t.daysInFromStage as number)
+                .sort((a, b) => a - b);
+              const observedMonths = samples.length > 0 ? samples[Math.floor(samples.length / 2)] / 30 : null;
+              const assumed = HARDCODED_RETENTION_MONTHS[s];
+              const gap = observedMonths !== null ? ((observedMonths - assumed) / assumed * 100) : null;
+              return (
+                <tr key={s} className="border-b border-gray-50">
+                  <td className="py-2 font-medium text-gray-800">{s}</td>
+                  <td className="py-2 text-right text-gray-700">{assumed} mo</td>
+                  <td className="py-2 text-right text-gray-700">
+                    {observedMonths !== null ? `${observedMonths.toFixed(1)} mo` : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-2 text-right text-gray-500">{samples.length.toLocaleString()}</td>
+                  <td className="py-2 text-right">
+                    {gap !== null ? (
+                      <span className={gap < -20 ? 'text-amber-600' : 'text-gray-500'}>
+                        {gap > 0 ? '+' : ''}{gap.toFixed(0)}%
+                      </span>
+                    ) : <span className="text-gray-300">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Channel Attribution Table */}
