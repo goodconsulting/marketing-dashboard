@@ -38,6 +38,17 @@ function toNum(v) {
 // and caused projected LTV = 0 (ROI flipped negative) in the dashboard.
 const boolTxt = (v) => (v === 'TRUE' || v === 'true' || v === '1' || v === 'YES' || v === 'Yes') ? 1 : 0;
 const strOrEmpty = (v) => (v && v !== '-') ? String(v) : '';
+
+// Normalize Incentivio's attrition_risk labels to the canonical low/medium/high
+// taxonomy used elsewhere in the app. Mirrors server/parsers/crm.ts.
+// Incentivio's export values: CHURNED | SLIDER | NO_RISK | '-' (blank).
+function normalizeAttritionRisk(raw) {
+  const v = (raw || '').toUpperCase().trim();
+  if (v === 'CHURNED') return 'high';
+  if (v === 'SLIDER') return 'medium';
+  if (v === 'NO_RISK') return 'low';
+  return 'unknown';
+}
 const snapshotRows = parsed.data.map(r => ({
   customer_id: r['Customer ID'],
   snapshot_month: SNAPSHOT_MONTH,
@@ -46,7 +57,7 @@ const snapshotRows = parsed.data.map(r => ({
   email: strOrEmpty(r['Email Address']),
   phone: strOrEmpty(r['Phone']),
   journey_stage: (r['Guest Journey Stage'] && r['Guest Journey Stage'] !== '-') ? r['Guest Journey Stage'] : 'UNKNOWN',
-  attrition_risk: r['Attrition Risk'] || 'unknown',
+  attrition_risk: normalizeAttritionRisk(r['Attrition Risk']),
   reach_location: strOrEmpty(r['Reach Location']),
   // Core spend/frequency
   lifetime_spend: toNum(r['Lifetime Spend']),
