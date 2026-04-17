@@ -351,6 +351,25 @@ export interface OtherCampaign {
   extra: Record<string, unknown> | null;
 }
 
+// ─── Stage Transitions ───────────────────────────────────────────
+
+export interface StageTransition {
+  customerId: string;
+  fromStage: string;
+  toStage: string;
+  direction: 'up' | 'down' | 'churn' | 'reactivate' | 'first_seen' | 'lateral';
+  fromSnapshot: string;
+  toSnapshot: string;
+  daysInFromStage: number | null;
+  spendInFromStage: number | null;
+  visitsInFromStage: number | null;
+  fromLifetimeSpend: number | null;
+  toLifetimeSpend: number | null;
+  fromLifetimeVisits: number | null;
+  toLifetimeVisits: number | null;
+  estimatedTransitionDate: string | null;
+}
+
 // ─── Parser result types ─────────────────────────────────────────
 
 export interface IncentivioParseResult {

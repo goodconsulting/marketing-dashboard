@@ -12,6 +12,7 @@ import type {
   MenuIntelligenceItem, IncentivioMetrics, UploadedFile,
   MonthlySnapshot, UploadPreview, ConfirmResult, OneLinkDaily,
   DiscountSummary, AmpCampaign, BillboardMonthly, OtherCampaign,
+  StageTransition,
 } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ export interface ServerState {
   ampCampaigns: AmpCampaign[];
   billboardData: BillboardMonthly[];
   otherCampaigns: OtherCampaign[];
+  stageTransitions: StageTransition[];
   uploads: UploadedFile[];
   annualBudget: number;
 }
