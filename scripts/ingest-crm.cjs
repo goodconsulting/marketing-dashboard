@@ -4,7 +4,7 @@
  * prev-snapshot → this-snapshot pair.
  *
  * Usage:
- *   node scripts/ingest-april-2026-crm.cjs [csvPath] [snapshotMonth]
+ *   node scripts/ingest-crm.cjs [csvPath] [snapshotMonth]
  *
  * Defaults (no args): the original April 2026 export ingested as 2026-04.
  *

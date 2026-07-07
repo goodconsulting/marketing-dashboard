@@ -71,7 +71,7 @@ React State → View Components
 ### Server-Side SQLite
 
 - **Connection**: `server/db/connection.ts` — singleton `better-sqlite3` instance, WAL journal mode
-- **Schema**: `server/db/schema.ts` — 12 tables with dedup indexes, auto-migration on startup
+- **Schema**: `server/db/schema.ts` — ~20 tables with dedup indexes, auto-migration on startup
 - **Queries**: `server/db/queries.ts` — prepared statement wrappers, snapshot aggregation SQL
 - **DB file**: `data/stack.db` (gitignored)
 
@@ -194,19 +194,57 @@ Database: `data/stack.db` (WAL mode, auto-created on first `npm run dev`)
 
 | Table | Dedup Key (UNIQUE) | Strategy |
 |-------|-------------------|----------|
-| `fact_expense` | `(date, vendor, amount)` | `INSERT OR IGNORE` |
-| `fact_meta_campaign` | `(month, campaign_name)` | `INSERT OR IGNORE` |
-| `fact_google_campaign` | `(month, campaign_name)` | `INSERT OR IGNORE` |
+| `fact_expense` | `(date, vendor, amount, description)` | `INSERT OR IGNORE` |
+| `fact_meta_campaign` | `(month, campaign_name)` | `INSERT OR REPLACE` — has `purchases` / `conversion_value` (Meta ROAS) |
+| `fact_meta_ad_set` | `(month, ad_set_name)` | `INSERT OR REPLACE` |
+| `fact_google_campaign` | `(month, campaign_name)` | `INSERT OR REPLACE` |
 | `fact_google_daily` | `date` (PK) | `INSERT OR REPLACE` |
-| `fact_toast_sales` | `(month, location)` | `INSERT OR REPLACE` |
+| `fact_store_sales` | `(month, location)` | `INSERT OR REPLACE` — Toast location-overview sales |
+| `fact_discount_summary` | `(period, discount_name)` | `INSERT OR REPLACE` |
+| `fact_billboard_monthly` | `(month, location)` | `INSERT OR REPLACE` — Lamar proof-of-play |
+| `fact_marketing_funding` | `(month, source)` | `INSERT OR REPLACE` — co-op / in-kind (e.g. Hero Labs) |
+| `fact_onelink_daily` | `(date, tracking_code)` | `INSERT OR REPLACE` |
+| `fact_amp_campaign` | `(month, campaign_type, campaign_name)` | `INSERT OR REPLACE` |
+| `fact_other_campaign` | `(month, source, campaign_name)` | `INSERT OR REPLACE` |
 | `fact_crm_customer_snapshot` | `(customer_id, snapshot_month)` | DELETE month then INSERT |
+| `fact_stage_transition` | `(customer_id, from_snapshot, to_snapshot)` | derived from consecutive CRM snapshots |
 | `fact_menu_item_snapshot` | `(item_name, snapshot_month)` | DELETE month then INSERT |
-| `fact_incentivio_metrics` | `month` (PK) | `INSERT OR REPLACE` |
+| `fact_incentivio_metrics` | `month` (PK) | `INSERT OR REPLACE` — derived from CRM snapshots |
 | `fact_budget` | `month` (PK) | `INSERT OR REPLACE` |
+| `fact_toast_discrepancy` | — | audit table |
 
 ### Meta Tables
 - `upload_log` — file upload history with status and dedup summary
 - `settings` — key-value app configuration
+
+## CLI Ingest & Month Close
+
+Monthly exports are loaded via parameterized scripts in `scripts/` (all support
+`--dry-run`, all idempotent) — see the `ingest-monthly-data` skill in
+`../.claude/skills/` for the full workflow:
+
+```bash
+node scripts/ingest-expenses.cjs <file> <YYYY-MM>       # QuickBooks → fact_expense
+node scripts/ingest-paid-media.cjs google|meta <file> <YYYY-MM>
+node scripts/ingest-sales.cjs <file> <YYYY-MM>          # Toast location overview
+node scripts/ingest-discounts.cjs <file> <YYYY-MM>      # Toast discount summary
+node scripts/ingest-billboard.cjs <YYYY-MM> --plays-... # Lamar proof-of-play (from PDF)
+node scripts/ingest-crm.cjs <csv> <YYYY-MM>             # Incentivio CRM snapshot
+node scripts/derive-incentivio-metrics.cjs <YYYY-MM>    # after CRM ingest
+
+node scripts/verify-month.cjs [YYYY-MM]        # month-close checklist; exit 1 = gaps
+node scripts/check-categorizer-sync.cjs        # after touching categorize keywords
+npm run push-data                              # push DB to prod (see deploy-dashboard skill)
+```
+
+**Categorizer invariant:** expense keywords live in THREE places —
+`server/parsers/categorize.ts`, `src/utils/categorize.ts`, and the mirror in
+`scripts/ingest-expenses.cjs`. Change all three together; `check-categorizer-sync.cjs`
+enforces it. Matching is first-substring-wins, so specific keywords (gsuite,
+workspace) must precede generic ones (google).
+
+**Snapshot trap:** never use `snapshot.avgLTV` for LTV — `computeSnapshots`
+overwrites it with the last-processed stage's average. Use `incentivioMetrics.ltv`.
 
 ## CSV Format Reference
 
