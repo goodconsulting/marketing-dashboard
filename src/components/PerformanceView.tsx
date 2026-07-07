@@ -244,7 +244,10 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, onelinkData, a
     const totalImpressions = filteredMeta.reduce((s, c) => s + c.impressions, 0);
     const totalResults = filteredMeta.reduce((s, c) => s + c.results, 0);
     const avgCPR = totalResults > 0 ? totalSpend / totalResults : 0;
-    return { totalSpend, totalImpressions, totalResults, avgCPR };
+    const totalConvValue = filteredMeta.reduce((s, c) => s + (c.conversionValue || 0), 0);
+    const totalPurchases = filteredMeta.reduce((s, c) => s + (c.purchases || 0), 0);
+    const roas = totalSpend > 0 ? totalConvValue / totalSpend : 0;
+    return { totalSpend, totalImpressions, totalResults, avgCPR, totalConvValue, totalPurchases, roas };
   }, [filteredMeta]);
 
   const googleSummary = useMemo(() => {
@@ -681,7 +684,7 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, onelinkData, a
       </div>
 
       {/* ── Channel KPIs ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard
           label="Meta Spend"
           value={formatCurrency(metaSummary.totalSpend)}
@@ -692,6 +695,14 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, onelinkData, a
           label="Meta Results"
           value={formatNumber(metaSummary.totalResults)}
           subtitle={`CPR: ${formatCurrency(metaSummary.avgCPR)}`}
+          color="#3b82f6"
+        />
+        <KPICard
+          label="Meta ROAS"
+          value={metaSummary.totalConvValue > 0 ? `${metaSummary.roas.toFixed(2)}x` : '—'}
+          subtitle={metaSummary.totalConvValue > 0
+            ? `${formatCurrency(metaSummary.totalConvValue)} value · ${formatNumber(metaSummary.totalPurchases)} purchases`
+            : 'no purchase data'}
           color="#3b82f6"
         />
         <KPICard

@@ -21,6 +21,9 @@ const AttributionView = lazy(() =>
 const CustomerHealthView = lazy(() =>
   import('./components/CustomerHealthView').then(m => ({ default: m.CustomerHealthView }))
 );
+const JourneyMapView = lazy(() =>
+  import('./components/JourneyMapView').then(m => ({ default: m.JourneyMapView }))
+);
 const MenuIntelligenceView = lazy(() =>
   import('./components/MenuIntelligenceView').then(m => ({ default: m.MenuIntelligenceView }))
 );
@@ -104,6 +107,20 @@ export default function App() {
               customers={store.state.crmCustomers}
               snapshots={snapshots}
               stageTransitions={store.state.stageTransitions}
+            />
+          )}
+
+          {activeTab === 'valuemap' && (
+            <JourneyMapView
+              snapshots={snapshots}
+              allCustomers={store.state.allCrmCustomers}
+              stageTransitions={store.state.stageTransitions}
+              discountSummary={store.state.discountSummary}
+              metaCampaigns={store.state.metaCampaigns}
+              googleCampaigns={store.state.googleCampaigns}
+              incentivioMetrics={store.state.incentivio}
+              toastSales={store.state.toastSales}
+              billboardData={store.state.billboardData}
             />
           )}
 

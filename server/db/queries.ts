@@ -55,6 +55,17 @@ export function initializeDatabase(): void {
     db.prepare('ALTER TABLE fact_amp_campaign ADD COLUMN spend REAL DEFAULT 0').run();
   }
 
+  // Add purchases + conversion_value to fact_meta_campaign if missing (added Jun 2026).
+  // Meta ad-level exports carry website-purchase counts and conversion value;
+  // storing them lets the dashboard show true Meta ROAS (value ÷ spend).
+  const metaCols = db.pragma('table_info(fact_meta_campaign)') as Array<{ name: string }>;
+  if (!metaCols.some(c => c.name === 'purchases')) {
+    db.prepare('ALTER TABLE fact_meta_campaign ADD COLUMN purchases INTEGER DEFAULT 0').run();
+  }
+  if (!metaCols.some(c => c.name === 'conversion_value')) {
+    db.prepare('ALTER TABLE fact_meta_campaign ADD COLUMN conversion_value REAL DEFAULT 0').run();
+  }
+
   // Migration guard: warn if CRM snapshots exist but stage transitions haven't
   // been derived. The backfill is a separate script (not auto-run on startup)
   // to keep ingest intentional; this warning tells the operator what to do.
@@ -530,11 +541,13 @@ export function getMetaCampaigns(month?: string): MetaCampaign[] {
   const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
     month: string; campaign_name: string; impressions: number; reach: number;
     clicks: number; spend: number; results: number; result_type: string; cost_per_result: number;
+    purchases: number; conversion_value: number;
   }>;
   return rows.map(r => ({
     month: r.month, campaignName: r.campaign_name, impressions: r.impressions,
     reach: r.reach, clicks: r.clicks, spend: r.spend, results: r.results,
     resultType: r.result_type, costPerResult: r.cost_per_result,
+    purchases: r.purchases || 0, conversionValue: r.conversion_value || 0,
   }));
 }
 
@@ -1141,6 +1154,8 @@ interface MonthlySnapshot {
   month: string;
   totalSpend: number;
   spendByCategory: Record<SpendCategory, number>;
+  coOpFunding: number;            // vendor co-op / in-kind funding received (offsets spend)
+  netMarketingInvestment: number; // totalSpend − coOpFunding
   budgetedSpend: number;
   budgetVariance: number;
   totalRevenue: number;
@@ -1168,6 +1183,7 @@ function emptySnapshot(month: string): MonthlySnapshot {
     month,
     totalSpend: 0,
     spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, sponsorship: 0, other: 0 },
+    coOpFunding: 0, netMarketingInvestment: 0,
     budgetedSpend: 0, budgetVariance: 0,
     totalRevenue: 0, revenueByLocation: {}, totalOrders: 0,
     metaImpressions: 0, metaClicks: 0, metaSpend: 0,
@@ -1197,6 +1213,15 @@ export function computeSnapshots(): MonthlySnapshot[] {
     const s = getSnap(r.month);
     s.spendByCategory[r.category] = (s.spendByCategory[r.category] || 0) + r.total;
     s.totalSpend += r.total;
+  }
+
+  // 1b. Marketing funding received (vendor co-op / in-kind) — offsets spend
+  //     but is tracked separately so category spend stays at gross.
+  const fundingRows = db.prepare(
+    'SELECT month, SUM(amount) as total FROM fact_marketing_funding GROUP BY month'
+  ).all() as Array<{ month: string; total: number }>;
+  for (const r of fundingRows) {
+    getSnap(r.month).coOpFunding += r.total;
   }
 
   // 2. Budgets
@@ -1308,6 +1333,8 @@ export function computeSnapshots(): MonthlySnapshot[] {
 
     // Round values
     s.totalSpend = Math.round(s.totalSpend * 100) / 100;
+    s.coOpFunding = Math.round(s.coOpFunding * 100) / 100;
+    s.netMarketingInvestment = Math.round((s.totalSpend - s.coOpFunding) * 100) / 100;
     s.budgetVariance = Math.round(s.budgetVariance * 100) / 100;
   }
 

@@ -41,6 +41,8 @@ export interface MetaCampaign {
   results: number;
   resultType: string;
   costPerResult: number;
+  purchases?: number;         // website purchases attributed (Meta)
+  conversionValue?: number;   // purchases conversion value (USD) — ROAS numerator
 }
 
 export interface MetaAdSet {
@@ -377,6 +379,8 @@ export interface MonthlySnapshot {
   // Spend
   totalSpend: number;
   spendByCategory: Record<SpendCategory, number>;
+  coOpFunding: number;            // vendor co-op / in-kind funding received (offsets spend)
+  netMarketingInvestment: number; // totalSpend − coOpFunding
   budgetedSpend: number;
   budgetVariance: number;
   // Revenue

@@ -64,6 +64,8 @@ function aggregateSnapshots(snapshots: MonthlySnapshot[]): MonthlySnapshot | nul
     month: `${snapshots[0].month} → ${snapshots[snapshots.length - 1].month}`,
     totalSpend: 0,
     spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, sponsorship: 0, other: 0 },
+    coOpFunding: 0,
+    netMarketingInvestment: 0,
     budgetedSpend: 0,
     budgetVariance: 0,
     totalRevenue: 0,
@@ -88,6 +90,7 @@ function aggregateSnapshots(snapshots: MonthlySnapshot[]): MonthlySnapshot | nul
 
   for (const s of snapshots) {
     agg.totalSpend += s.totalSpend;
+    agg.coOpFunding += s.coOpFunding || 0;
     agg.totalRevenue += s.totalRevenue;
     agg.totalOrders += s.totalOrders;
     agg.budgetedSpend += s.budgetedSpend;
@@ -117,6 +120,7 @@ function aggregateSnapshots(snapshots: MonthlySnapshot[]): MonthlySnapshot | nul
   agg.attritionHighCount = last.attritionHighCount;
   agg.segmentCounts = last.segmentCounts;
   agg.budgetVariance = agg.budgetedSpend - agg.totalSpend;
+  agg.netMarketingInvestment = agg.totalSpend - agg.coOpFunding;
 
   // ROI based on aggregated figures
   const estimatedLTV = agg.avgLTV || agg.avgOrderValue * 2.5;

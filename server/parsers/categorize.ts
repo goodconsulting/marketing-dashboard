@@ -32,6 +32,7 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'usps': 'direct_mail_print',
   'vpc direct': 'direct_mail_print',
   'uline': 'direct_mail_print',
+  'copyworks': 'direct_mail_print',
 
   // Out-of-Home
   'lamar': 'ooh',
@@ -66,9 +67,14 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'west des moines': 'sponsorship',
   'newbo': 'sponsorship',
   'urbandale chamber': 'sponsorship',
+  'waukee area chamber': 'sponsorship',
   'careismatic': 'sponsorship',
   'legitscript': 'sponsorship',
   'sponsorship': 'sponsorship',
+  // Local media & event partners (added Apr 2026 per CIO)
+  'big green': 'sponsorship',
+  'umbrella media': 'sponsorship',
+  'downtown events': 'sponsorship',
 
   // DoorDash paid media (DD Marketing = DoorDash ads)
   'dd marketing': 'paid_media',

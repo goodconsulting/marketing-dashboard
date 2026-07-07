@@ -25,6 +25,8 @@ if (!fs.existsSync(FILE_PATH)) {
 const MONTH_MAP = {
   jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
   jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+  january: '01', february: '02', march: '03', april: '04', june: '06',
+  july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
 };
 
 function parseSheetPeriod(sheetName) {
@@ -36,8 +38,8 @@ function parseSheetPeriod(sheetName) {
     return { period: `${qMatch[2]}-Q${qMatch[1]}`, periodType: 'quarter' };
   }
 
-  // Month: "Jan 2026" -> 2026-01
-  const mMatch = trimmed.match(/^(\w{3})\s+(\d{4})$/i);
+  // Month: "Jan 2026" or "March 2026" -> 2026-01 / 2026-03
+  const mMatch = trimmed.match(/^(\w+)\s+(\d{4})$/i);
   if (mMatch) {
     const monthNum = MONTH_MAP[mMatch[1].toLowerCase()];
     if (monthNum) {

@@ -214,6 +214,8 @@ CREATE TABLE IF NOT EXISTS fact_meta_campaign (
   results         INTEGER DEFAULT 0,
   result_type     TEXT,
   cost_per_result REAL DEFAULT 0,
+  purchases       INTEGER DEFAULT 0,  -- website purchases attributed (added Jun 2026)
+  conversion_value REAL DEFAULT 0,    -- purchases conversion value (USD) — return side for ROAS
   UNIQUE(month, campaign_name)
 );
 `;
@@ -464,6 +466,24 @@ CREATE TABLE IF NOT EXISTS fact_other_campaign (
 );
 `;
 
+// Marketing funding received (vendor co-op, in-kind allowances, grants).
+// These OFFSET marketing spend but are NOT spend, so they live outside
+// fact_expense (which would otherwise net categories negative). The dashboard
+// keeps category spend at gross and surfaces funding as a separate line:
+//   net marketing investment = gross spend − funding.
+// INSERT OR REPLACE keyed on (month, source).
+const FACT_MARKETING_FUNDING = `
+CREATE TABLE IF NOT EXISTS fact_marketing_funding (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  month        TEXT NOT NULL,
+  source       TEXT NOT NULL,
+  funding_type TEXT NOT NULL DEFAULT 'co_op',
+  amount       REAL NOT NULL DEFAULT 0,
+  note         TEXT,
+  UNIQUE(month, source)
+);
+`;
+
 // ---------------------------------------------------------------------------
 // Meta tables
 // ---------------------------------------------------------------------------
@@ -550,6 +570,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   FACT_AMP_CAMPAIGN,
   FACT_BILLBOARD_MONTHLY,
   FACT_OTHER_CAMPAIGN,
+  FACT_MARKETING_FUNDING,
   FACT_STAGE_TRANSITION,
   UPLOAD_LOG,
   SETTINGS,
@@ -576,6 +597,7 @@ export const TABLE_NAMES = [
   'fact_amp_campaign',
   'fact_billboard_monthly',
   'fact_other_campaign',
+  'fact_marketing_funding',
   'fact_stage_transition',
   'upload_log',
   'settings',
