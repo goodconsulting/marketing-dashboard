@@ -52,7 +52,7 @@ const CHECK_KEY_GUIDE: Record<string, { source: string; hint: string }> = {
   meta: { source: 'meta', hint: 'Meta ad-level report (CSV).' },
   sales: { source: 'toast_location_overview', hint: 'Toast "Location overview" export (CSV). The file has no dates — the month selector below tells the import which month it covers.' },
   discounts: { source: 'discount_summary', hint: 'Toast Discount Summary (XLSX). Sheets are month names without a year — the month selector anchors the year. All period sheets in the workbook are imported.' },
-  crm: { source: 'incentivio_crm', hint: 'Incentivio Customer Export (CSV).' },
+  crm: { source: 'incentivio_crm', hint: 'Incentivio Customer Export (CSV). This is a point-in-time snapshot — set the month picker to the month being CLOSED (an export pulled early July = the June snapshot). New signups per month are derived from each customer\'s account-created date, so they land in the right month automatically.' },
   incentivio: { source: 'incentivio_crm', hint: 'Derived automatically when a CRM export is ingested.' },
   social_facebook: { source: 'social_pdf', hint: 'Hello Digital "Stack Wellness - Facebook" monthly PDF. The latest report restates the whole year.' },
   social_instagram: { source: 'social_pdf', hint: 'Hello Digital "Stack Wellness - Instagram" monthly PDF. The latest report restates the whole year.' },

@@ -213,7 +213,18 @@ export async function stageUpload(
     case 'incentivio':
     case 'incentivio_crm': {
       const result = parseCRM(content);
-      const month = detectedMonth || new Date().toISOString().substring(0, 7);
+      // CRM exports are POINT-IN-TIME snapshots, pulled at close time early
+      // the following month — a July 8 pull is the JUNE snapshot (precedent:
+      // the June 4 2026 export was ingested as 2026-05). Default to the
+      // previous month; the upload form's month picker overrides. New-customer
+      // counts are derived from each record's account_created_date, so a
+      // month's signups are exact regardless of the pull date.
+      let month = detectedMonth;
+      if (!month) {
+        const now = new Date();
+        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        month = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+      }
       recordCount = result.customers.length;
       sampleRows = result.customers.slice(0, 5).map(c => ({
         name: `${c.firstName} ${c.lastName}`,
@@ -222,6 +233,10 @@ export async function stageUpload(
         lastVisit: c.lastVisitDate,
       }));
       dedup = analyzeCRMDedup(month, recordCount);
+      if (!detectedMonth) {
+        dedup.message += ` NOTE: no month selected — labeled ${month} (previous month; CRM exports are point-in-time snapshots pulled at close). Use the month picker to override.`;
+      }
+      detectedMonth = month;
       parsedData = { type: 'crm', result, month };
       break;
     }
