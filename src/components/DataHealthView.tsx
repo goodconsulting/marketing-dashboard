@@ -4,8 +4,9 @@ import { fetchYearStatus } from '../api/dataApi';
 import type { MonthStatus } from '../types';
 
 interface DataHealthViewProps {
-  /** Called when the user clicks a missing cell — App switches to Upload. */
-  onGoToUpload?: (sourceKey: string) => void;
+  /** Called when the user clicks a missing cell — App switches to Upload
+   *  with the source and month preselected. */
+  onGoToUpload?: (sourceKey: string, month: string) => void;
 }
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -107,7 +108,7 @@ export function DataHealthView({ onGoToUpload }: DataHealthViewProps) {
                           <span className="text-gray-200">·</span>
                         ) : check.required ? (
                           <button
-                            onClick={clickable ? () => onGoToUpload!(check.key) : undefined}
+                            onClick={clickable ? () => onGoToUpload!(check.key, s.month) : undefined}
                             title={`${check.label} missing for ${s.month} — click to upload`}
                             className="align-middle"
                           >

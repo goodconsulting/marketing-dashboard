@@ -34,6 +34,9 @@ export function detectSourceFromFilename(filename: string): DataSourceType | nul
   if (lower.includes('overview_cards') || lower.includes('time_series') || lower.includes('search_keywords')) return 'google';
   if (lower.includes('google') && !lower.includes('analytics')) return 'google';
 
+  // Toast "Location overview" export (coarse per-location totals, no dates)
+  if (lower.includes('location_overview') || lower.includes('location overview')) return 'toast_location_overview';
+
   // Toast POS
   if (lower.includes('toast') || lower.includes('productmix')) return 'toast';
 
@@ -99,6 +102,11 @@ export function detectSourceFromHeaders(csvContent: string): DataSourceType {
   // Google Ads campaigns: "Campaign Name" + "Cost"
   if (headerSet.has('campaign name') && headerSet.has('cost')) {
     return 'google';
+  }
+
+  // Toast location overview: "Location name" + "Gross sales" (and no date column)
+  if (headerSet.has('location name') && headerSet.has('gross sales')) {
+    return 'toast_location_overview';
   }
 
   // QuickBooks / Expenses: "Transaction date" + "Amount" or "Date" + "Merchant" + "Amount"

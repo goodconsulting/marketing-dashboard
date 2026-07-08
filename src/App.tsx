@@ -58,10 +58,12 @@ export default function App() {
   const store = useDashboardStore();
   const { snapshots, addToastSales } = store;
 
-  // Scorecard → Upload navigation (red ✗ chips preselect the missing source)
+  // Scorecard → Upload navigation (red ✗ chips preselect source + month)
   const [pendingUploadSource, setPendingUploadSource] = useState<string | null>(null);
-  const goToUpload = useCallback((sourceKey: string) => {
+  const [pendingUploadMonth, setPendingUploadMonth] = useState<string | null>(null);
+  const goToUpload = useCallback((sourceKey: string, month: string) => {
     setPendingUploadSource(sourceKey);
+    setPendingUploadMonth(month);
     setActiveTab('upload');
   }, []);
 
@@ -174,6 +176,7 @@ export default function App() {
               onClearData={store.clearAllData}
               onUploadConfirmed={store.refresh}
               preselectSource={pendingUploadSource}
+              preselectMonth={pendingUploadMonth}
             />
           )}
 

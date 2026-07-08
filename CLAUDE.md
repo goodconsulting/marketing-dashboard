@@ -222,7 +222,15 @@ Database: `data/stack.db` (WAL mode, auto-created on first `npm run dev`)
 
 Monthly exports are loaded via parameterized scripts in `scripts/` (all support
 `--dry-run`, all idempotent) — see the `ingest-monthly-data` skill in
-`../.claude/skills/` for the full workflow:
+`../.claude/skills/` for the full workflow. Toast location-overview sales,
+discount summaries, and social PDFs are also uploadable in-app (Upload tab has
+source + month overrides; undated exports REQUIRE the month picker).
+
+Shared parser cores live in `server/lib/*.cjs` (used by both CLI scripts and
+the upload pipeline — one implementation, no drift). IMPORTANT: those `.cjs`
+cores must NOT `require()` node_modules packages at top level — Vite's bundled
+dev server can't resolve dynamic CJS requires and the server restart silently
+fails. Pass libs in as parameters (see discount-summary.cjs / toast-location-overview.cjs).
 
 ```bash
 node scripts/ingest-expenses.cjs <file> <YYYY-MM>       # QuickBooks → fact_expense

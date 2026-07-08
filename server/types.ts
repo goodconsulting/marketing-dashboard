@@ -25,7 +25,8 @@ export type DataSourceType =
   | 'budget'
   | 'onelink'
   | 'discount_summary'
-  | 'social_pdf';
+  | 'social_pdf'
+  | 'toast_location_overview';
 
 export type JourneyStage = 'WHALE' | 'LOYALIST' | 'REGULAR' | 'ROOKIE' | 'CHURNED' | 'SLIDER' | 'UNKNOWN';
 

@@ -14,3 +14,4 @@ export { parseBudgetXLSX } from './budget.ts';
 export { parseOneLinkDaily } from './onelink.ts';
 export { parseDiscountSummary } from './discountSummary.ts';
 export { parseSocialPdf } from './socialPdf.ts';
+export { parseToastLocationOverview } from './toastLocationOverview.ts';

@@ -26,6 +26,8 @@ import {
   parseToastCSV,
   parseBudgetXLSX,
   parseSocialPdf,
+  parseToastLocationOverview,
+  parseDiscountSummary,
 } from '../parsers/index.ts';
 import {
   insertExpenses,
@@ -38,6 +40,10 @@ import {
   insertIncentivioMetrics,
   insertBudgets,
   insertSocialMonthly,
+  insertStoreSales,
+  insertDiscountSummary,
+  getStoreSales,
+  getDiscountSummary,
   createUploadEntry,
   analyzeExpenseDedup,
   analyzeCRMDedup,
@@ -246,6 +252,70 @@ export async function stageUpload(
       break;
     }
 
+    // ── Toast "Location overview" (coarse per-location totals, no dates) ──
+    case 'toast_location_overview': {
+      if (!/^\d{4}-\d{2}$/.test(detectedMonth)) {
+        throw new Error('Toast location-overview exports carry no dates — select the month in the upload form.');
+      }
+      const records = parseToastLocationOverview(content, detectedMonth);
+      recordCount = records.length;
+      sampleRows = records.slice(0, 6);
+
+      // Wrong-month guard: this export is undated, so cross-check its discount
+      // total against the discount summary already loaded for the month
+      // (>5% delta caught the Apr/May file mix-up).
+      const exportDisc = records.reduce((a, r) => a + (r.discountTotal || 0), 0);
+      const summDisc = getDiscountSummary(detectedMonth)
+        .reduce((a, d) => a + d.discountAmount, 0);
+      let message: string;
+      if (summDisc > 0) {
+        const deltaPct = (Math.abs(exportDisc - summDisc) / summDisc) * 100;
+        message = deltaPct > 5
+          ? `⚠️ Wrong-month check: export discounts $${exportDisc.toFixed(2)} vs loaded ${detectedMonth} discount summary $${summDisc.toFixed(2)} (Δ ${deltaPct.toFixed(1)}%) — this may be a different month's file.`
+          : `Wrong-month check vs ${detectedMonth} discount summary: Δ ${deltaPct.toFixed(1)}% ✓`;
+      } else {
+        message = `No discount summary loaded for ${detectedMonth} yet — wrong-month cross-check unavailable.`;
+      }
+      dedup = {
+        existingRecords: getStoreSales(detectedMonth).length,
+        newRecords: records.length,
+        duplicates: 0,
+        strategy: 'insert_or_replace',
+        message,
+      };
+      parsedData = { type: 'store_sales', records };
+      break;
+    }
+
+    // ── Toast Discount Summary XLSX (sheet per period) ──
+    case 'discount_summary': {
+      const yearHint = (detectedMonth.match(/^(\d{4})/) || [])[1]
+        || String(new Date().getFullYear());
+      const { periods, skippedSheets } = parseDiscountSummary(fileBuffer, yearHint);
+      if (periods.length === 0) {
+        throw new Error(
+          `No period sheets recognized${skippedSheets.length ? ` (sheets: ${skippedSheets.join(', ')})` : ''}. ` +
+          'Sheets named with a bare month ("April") need a month selected in the upload form to anchor the year.');
+      }
+      periods.sort((a, b) => a.period.localeCompare(b.period));
+      const records = periods.flatMap(p => p.records);
+      recordCount = records.length;
+      sampleRows = records.slice(0, 6);
+      detectedMonth = periods[periods.length - 1].period;
+      const perPeriod = periods
+        .map(p => `${p.period}: ${p.records.length} discounts / $${p.records.reduce((a, r) => a + r.discountAmount, 0).toFixed(2)}`)
+        .join(' · ');
+      dedup = {
+        existingRecords: periods.reduce((a, p) => a + getDiscountSummary(p.period).length, 0),
+        newRecords: records.length,
+        duplicates: 0,
+        strategy: 'insert_or_replace',
+        message: `Periods in workbook — ${perPeriod}. Existing rows for these periods will be replaced.`,
+      };
+      parsedData = { type: 'discount_summary', records };
+      break;
+    }
+
     // ── Hello Digital social PDF (Facebook / Instagram year grid) ──
     case 'social_pdf': {
       // The PDF grid has no year — use the month hint's year, else current year.
@@ -348,6 +418,14 @@ export function confirmUpload(uploadId: string): ConfirmResult {
 
     case 'social':
       insertedCount = insertSocialMonthly(parsedData.records);
+      break;
+
+    case 'store_sales':
+      insertedCount = insertStoreSales(parsedData.records);
+      break;
+
+    case 'discount_summary':
+      insertedCount = insertDiscountSummary(parsedData.records);
       break;
 
     default:

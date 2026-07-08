@@ -5,8 +5,8 @@ import type { MonthStatus } from '../types';
 
 interface MonthCloseCardProps {
   /** Called when the user clicks a missing source — App switches to the
-   *  Upload tab (source key passed for preselection). */
-  onGoToUpload?: (sourceKey: string) => void;
+   *  Upload tab with the source and month preselected. */
+  onGoToUpload?: (sourceKey: string, month: string) => void;
   /** Bump to re-fetch (e.g. after an upload is confirmed). */
   refreshToken?: number;
 }
@@ -86,7 +86,7 @@ export function MonthCloseCard({ onGoToUpload, refreshToken = 0 }: MonthCloseCar
             return (
               <button
                 key={c.key}
-                onClick={clickable ? () => onGoToUpload!(c.key) : undefined}
+                onClick={clickable ? () => onGoToUpload!(c.key, month) : undefined}
                 disabled={!clickable}
                 title={c.present
                   ? `${c.label}: ${c.rows} row${c.rows === 1 ? '' : 's'}${c.total != null ? ` · $${c.total.toLocaleString()}` : ''}`

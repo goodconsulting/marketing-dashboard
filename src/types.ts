@@ -13,7 +13,8 @@ export type DataSourceType =
   | 'budget'
   | 'onelink'
   | 'discount_summary'
-  | 'social_pdf';
+  | 'social_pdf'
+  | 'toast_location_overview';
 
 export interface MonthlyExpense {
   id: string;
@@ -455,13 +456,14 @@ export interface UploadedFile {
 
 // ─── Upload Pipeline Types ───────────────────────────────────────
 
+// Mirrors the server's DedupAnalysis (server/db/queries.ts) — these shapes
+// diverged once and the preview card silently rendered blank text.
 export interface DedupAnalysis {
-  totalIncoming: number;
-  existingCount: number;
-  newCount: number;
-  duplicateCount: number;
-  action: 'insert_new' | 'replace_all' | 'skip_duplicates' | 'snapshot_replace';
-  details: string;
+  existingRecords: number;
+  newRecords: number;
+  duplicates: number;
+  strategy: 'insert_or_ignore' | 'snapshot_replace' | 'insert_or_replace';
+  message: string;
 }
 
 export interface UploadPreview {

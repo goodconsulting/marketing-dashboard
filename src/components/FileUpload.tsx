@@ -10,6 +10,8 @@ interface FileUploadProps {
   /** Month-close scorecard check key (e.g. 'social_facebook') — preselects
    *  the source dropdown and shows a which-file hint. */
   preselectSource?: string | null;
+  /** Month the scorecard was showing when clicked — preselects the month picker. */
+  preselectMonth?: string | null;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -24,6 +26,8 @@ const SOURCE_LABELS: Record<string, string> = {
   expenses: 'Marketing Expenses',
   budget: 'Budget',
   social_pdf: 'Social Report (Hello Digital PDF)',
+  toast_location_overview: 'Toast Location Overview',
+  discount_summary: 'Discount Summary',
 };
 
 /** Source values offered in the manual-override dropdown. */
@@ -33,6 +37,8 @@ const OVERRIDE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'meta', label: 'Meta Ads campaigns' },
   { value: 'google', label: 'Google Ads campaigns' },
   { value: 'toast', label: 'Toast POS sales' },
+  { value: 'toast_location_overview', label: 'Toast Location Overview (needs month)' },
+  { value: 'discount_summary', label: 'Discount Summary XLSX' },
   { value: 'incentivio_crm', label: 'Incentivio CRM export' },
   { value: 'incentivio_menu', label: 'Menu Intelligence' },
   { value: 'budget', label: 'Operating Budget' },
@@ -44,8 +50,8 @@ const CHECK_KEY_GUIDE: Record<string, { source: string; hint: string }> = {
   expenses: { source: 'expenses', hint: 'QuickBooks "Advertising & marketing" transaction report (XLSX or CSV).' },
   google: { source: 'google', hint: 'Google Ads campaign export (CSV).' },
   meta: { source: 'meta', hint: 'Meta ad-level report (CSV).' },
-  sales: { source: 'toast', hint: 'Toast sales export (CSV). Coarse "Location overview" exports are loaded via scripts/ingest-sales.cjs instead.' },
-  discounts: { source: 'auto', hint: 'Toast Discount Summary (XLSX) is currently loaded via scripts/ingest-discounts.cjs.' },
+  sales: { source: 'toast_location_overview', hint: 'Toast "Location overview" export (CSV). The file has no dates — the month selector below tells the import which month it covers.' },
+  discounts: { source: 'discount_summary', hint: 'Toast Discount Summary (XLSX). Sheets are month names without a year — the month selector anchors the year. All period sheets in the workbook are imported.' },
   crm: { source: 'incentivio_crm', hint: 'Incentivio Customer Export (CSV).' },
   incentivio: { source: 'incentivio_crm', hint: 'Derived automatically when a CRM export is ingested.' },
   social_facebook: { source: 'social_pdf', hint: 'Hello Digital "Stack Wellness - Facebook" monthly PDF. The latest report restates the whole year.' },
@@ -54,14 +60,24 @@ const CHECK_KEY_GUIDE: Record<string, { source: string; hint: string }> = {
   coop: { source: 'auto', hint: 'Co-op / in-kind funding is recorded manually in fact_marketing_funding.' },
 };
 
-const DEDUP_ACTION_LABELS: Record<string, string> = {
-  insert_new: 'New records will be added',
-  replace_all: 'Existing data for this month will be replaced',
-  skip_duplicates: 'Duplicates will be skipped',
+const DEDUP_STRATEGY_LABELS: Record<string, string> = {
+  insert_or_ignore: 'Duplicates will be skipped',
+  insert_or_replace: 'Existing data for this period will be replaced',
   snapshot_replace: 'Previous snapshot for this month will be replaced',
 };
 
-export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, preselectSource }: FileUploadProps) {
+/** Last 14 months, newest first, for the manual month picker. */
+function recentMonthOptions(): string[] {
+  const out: string[] = [];
+  const now = new Date();
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, preselectSource, preselectMonth }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [preview, setPreview] = useState<UploadPreview | null>(null);
@@ -70,12 +86,16 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, pres
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [sourceOverride, setSourceOverride] = useState('auto');
+  const [monthOverride, setMonthOverride] = useState('');
 
-  // Scorecard navigation: preselect the source and surface guidance
+  // Scorecard navigation: preselect source + month and surface guidance
   const guide = preselectSource ? CHECK_KEY_GUIDE[preselectSource] : undefined;
   useEffect(() => {
     if (guide) setSourceOverride(guide.source);
   }, [guide]);
+  useEffect(() => {
+    if (preselectMonth) setMonthOverride(preselectMonth);
+  }, [preselectMonth]);
 
   // ─── Stage a file for preview ──────────────────────────────────
   const processFile = useCallback(async (file: File) => {
@@ -115,7 +135,7 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, pres
       // Upload to server for preview
       const result = await uploadFile(
         file,
-        undefined,
+        monthOverride || undefined,
         sourceOverride === 'auto' ? undefined : sourceOverride,
       );
 
@@ -131,7 +151,7 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, pres
     } finally {
       setProcessing(false);
     }
-  }, [sourceOverride]);
+  }, [sourceOverride, monthOverride]);
 
   // ─── Confirm the staged upload ─────────────────────────────────
   const handleConfirm = useCallback(async () => {
@@ -225,6 +245,17 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, pres
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+            <select
+              value={monthOverride}
+              onChange={e => setMonthOverride(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700"
+              title="Required for undated exports (Toast location overview); anchors the year for discount workbooks and social PDFs"
+            >
+              <option value="">Month: from file</option>
+              {recentMonthOptions().map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
             <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#2D5A3D] text-white rounded-lg cursor-pointer hover:bg-[#4A7C5C] text-sm">
               <FileText size={16} /> Choose File
               <input type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFileSelect} />
@@ -278,30 +309,33 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, pres
             </div>
           </div>
 
-          {/* Dedup analysis */}
-          {preview.dedup && (
-            <div className={`rounded-lg p-3 text-sm ${
-              preview.dedup.duplicateCount > 0
-                ? 'bg-amber-50 border border-amber-200'
-                : 'bg-green-50 border border-green-200'
-            }`}>
-              <div className="flex items-start gap-2">
-                {preview.dedup.duplicateCount > 0 ? (
-                  <FileWarning size={16} className="text-amber-600 mt-0.5 shrink-0" />
-                ) : (
-                  <Check size={16} className="text-green-600 mt-0.5 shrink-0" />
-                )}
-                <div>
-                  <p className={preview.dedup.duplicateCount > 0 ? 'text-amber-800' : 'text-green-800'}>
-                    {preview.dedup.details}
-                  </p>
-                  <p className="text-xs mt-1 opacity-75">
-                    {DEDUP_ACTION_LABELS[preview.dedup.action] || preview.dedup.action}
-                  </p>
+          {/* Dedup / cross-check analysis */}
+          {preview.dedup && (() => {
+            const flagged = preview.dedup.duplicates > 0 || preview.dedup.message.includes('⚠️');
+            return (
+              <div className={`rounded-lg p-3 text-sm ${
+                flagged
+                  ? 'bg-amber-50 border border-amber-200'
+                  : 'bg-green-50 border border-green-200'
+              }`}>
+                <div className="flex items-start gap-2">
+                  {flagged ? (
+                    <FileWarning size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                  ) : (
+                    <Check size={16} className="text-green-600 mt-0.5 shrink-0" />
+                  )}
+                  <div>
+                    <p className={flagged ? 'text-amber-800' : 'text-green-800'}>
+                      {preview.dedup.message}
+                    </p>
+                    <p className="text-xs mt-1 opacity-75">
+                      {DEDUP_STRATEGY_LABELS[preview.dedup.strategy] || preview.dedup.strategy}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Sample rows */}
           {preview.sampleRows.length > 0 && (
