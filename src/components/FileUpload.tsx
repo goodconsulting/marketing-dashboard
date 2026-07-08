@@ -414,7 +414,7 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, pres
                 <p className="font-medium text-gray-800">{label}</p>
                 <p className="text-gray-400 mt-1">
                   {key === 'expenses' && 'QuickBooks XLSX/CSV'}
-                  {key === 'meta' && 'Meta Ads CSV (incl. Brightn)'}
+                  {key === 'meta' && 'Meta Ads CSV'}
                   {key === 'google' && 'Google Ads CSV (campaigns + daily)'}
                   {key === 'toast' && 'Toast sales CSV or live API sync'}
                   {key === 'incentivio' && 'CRM exports (per-customer), menu intelligence'}
