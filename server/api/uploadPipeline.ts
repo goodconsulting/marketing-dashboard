@@ -25,6 +25,7 @@ import {
   parseGoogleDaily,
   parseToastCSV,
   parseBudgetXLSX,
+  parseSocialPdf,
 } from '../parsers/index.ts';
 import {
   insertExpenses,
@@ -36,6 +37,7 @@ import {
   insertMenuSnapshot,
   insertIncentivioMetrics,
   insertBudgets,
+  insertSocialMonthly,
   createUploadEntry,
   analyzeExpenseDedup,
   analyzeCRMDedup,
@@ -106,22 +108,26 @@ function extractMonthFromFilename(filename: string): string {
 
 // ─── Stage an upload (parse + dedup) ──────────────────────────────
 
-export function stageUpload(
+export async function stageUpload(
   fileBuffer: Buffer,
   filename: string,
   monthHint?: string,
-): UploadPreview {
+  sourceOverride?: string,
+): Promise<UploadPreview> {
   evictExpired();
 
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   const isXlsx = ext === 'xlsx' || ext === 'xls';
-  const content = isXlsx ? '' : fileBuffer.toString('utf-8');
+  const isPdf = ext === 'pdf';
+  const content = (isXlsx || isPdf) ? '' : fileBuffer.toString('utf-8');
 
-  // 1. Detect source type
-  const source = detectSourceType(filename, content || undefined);
+  // 1. Detect source type (explicit user selection wins over detection)
+  const source: DataSourceType = (sourceOverride && sourceOverride !== 'auto')
+    ? sourceOverride as DataSourceType
+    : detectSourceType(filename, content || undefined);
 
   // 2. Derive month
-  const detectedMonth = monthHint || extractMonthFromFilename(filename) || '';
+  let detectedMonth = monthHint || extractMonthFromFilename(filename) || '';
 
   // 3. Parse + analyze dedup
   const uploadId = randomBytes(8).toString('hex');
@@ -240,6 +246,20 @@ export function stageUpload(
       break;
     }
 
+    // ── Hello Digital social PDF (Facebook / Instagram year grid) ──
+    case 'social_pdf': {
+      // The PDF grid has no year — use the month hint's year, else current year.
+      const year = (detectedMonth.match(/^(\d{4})/) || [])[1]
+        || String(new Date().getFullYear());
+      const records = await parseSocialPdf(fileBuffer, year);
+      recordCount = records.length;
+      sampleRows = records.slice(0, 5);
+      dedup = null; // latest report wins: INSERT OR REPLACE on (month, platform)
+      detectedMonth = records[records.length - 1]?.month || detectedMonth;
+      parsedData = { type: 'social', records };
+      break;
+    }
+
     // ── Organic / 3PO (not yet supported, just preview) ──
     default: {
       recordCount = 0;
@@ -324,6 +344,10 @@ export function confirmUpload(uploadId: string): ConfirmResult {
 
     case 'budget':
       insertedCount = insertBudgets(parsedData.records);
+      break;
+
+    case 'social':
+      insertedCount = insertSocialMonthly(parsedData.records);
       break;
 
     default:

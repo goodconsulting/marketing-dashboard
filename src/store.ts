@@ -32,6 +32,7 @@ function getInitialState(): DashboardState {
     billboardData: [],
     otherCampaigns: [],
     stageTransitions: [],
+    socialMonthly: [],
   };
 }
 
@@ -63,6 +64,7 @@ export function useDashboardStore() {
         billboardData: data.billboardData || [],
         otherCampaigns: data.otherCampaigns || [],
         stageTransitions: data.stageTransitions || [],
+        socialMonthly: data.socialMonthly || [],
         uploadedFiles: data.uploads,
         annualBudget: data.annualBudget || 533000,
         snapshots: data.snapshots,
@@ -100,6 +102,7 @@ export function useDashboardStore() {
             billboardData: data.billboardData || [],
             otherCampaigns: data.otherCampaigns || [],
             stageTransitions: data.stageTransitions || [],
+        socialMonthly: data.socialMonthly || [],
             uploadedFiles: data.uploads,
             annualBudget: data.annualBudget || 533000,
             snapshots: data.snapshots,

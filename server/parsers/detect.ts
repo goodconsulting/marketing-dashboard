@@ -16,6 +16,11 @@ import { isGoogleCampaignReport } from './google.ts';
 export function detectSourceFromFilename(filename: string): DataSourceType | null {
   const lower = filename.toLowerCase();
 
+  // Hello Digital monthly social report (PDF year-grid, Facebook or Instagram)
+  if (lower.endsWith('.pdf') && (lower.includes('facebook') || lower.includes('instagram'))) {
+    return 'social_pdf';
+  }
+
   // Google Ads campaign report (from Google Ads UI export: "Campaign report - Month YYYY.csv")
   if (lower.includes('campaign report')) return 'google';
 

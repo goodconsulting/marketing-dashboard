@@ -30,6 +30,8 @@ import {
   getDiscountSummary,
   getAmpCampaigns,
   getBillboardMonthly,
+  getSocialMonthly,
+  getMonthStatus,
   getOtherCampaigns,
   getStageTransitions,
   getStageTransitionMatrix,
@@ -138,6 +140,7 @@ export async function handleDataRequest(
       const ampCampaigns = getAmpCampaigns();
       const billboardData = getBillboardMonthly();
       const otherCampaigns = getOtherCampaigns();
+      const socialMonthly = getSocialMonthly();
       const stageTransitions = getStageTransitions(5000);
       const uploads = getUploadLog();
       const currentYear = new Date().getFullYear().toString();
@@ -160,6 +163,7 @@ export async function handleDataRequest(
         ampCampaigns,
         billboardData,
         otherCampaigns,
+        socialMonthly,
         stageTransitions,
         uploads,
         annualBudget,
@@ -248,6 +252,32 @@ export async function handleDataRequest(
       return true;
     }
 
+    // ── Social monthly KPIs (Hello Digital) ──────────────────────
+    if (path === '/api/data/social') {
+      json(res, 200, getSocialMonthly(query.get('month') || undefined));
+      return true;
+    }
+
+    // ── Month close status (scorecard) ───────────────────────────
+    // ?month=YYYY-MM for one month; ?year=YYYY for all 12 (Data Health grid).
+    if (path === '/api/data/month-status') {
+      const year = query.get('year');
+      if (year && /^\d{4}$/.test(year)) {
+        const statuses = Array.from({ length: 12 }, (_, i) =>
+          getMonthStatus(`${year}-${String(i + 1).padStart(2, '0')}`));
+        json(res, 200, statuses);
+        return true;
+      }
+      let month = query.get('month');
+      if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+        const now = new Date();
+        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        month = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+      }
+      json(res, 200, getMonthStatus(month));
+      return true;
+    }
+
     // ── Other Campaigns (Yelp, TikTok, etc.) ─────────────────────
     if (path === '/api/data/other-campaigns') {
       json(res, 200, getOtherCampaigns(query.get('month') || undefined));
@@ -294,6 +324,7 @@ export async function handleDataRequest(
     if (path === '/api/data/upload') {
       const filename = query.get('filename') || 'upload.csv';
       const monthHint = query.get('month') || undefined;
+      const sourceOverride = query.get('source') || undefined;
       const body = await parseRawBody(req);
 
       if (body.length === 0) {
@@ -302,7 +333,7 @@ export async function handleDataRequest(
       }
 
       try {
-        const preview = stageUpload(body, filename, monthHint);
+        const preview = await stageUpload(body, filename, monthHint, sourceOverride);
         console.log(`[Data API] Staged upload: ${filename} → ${preview.detectedSource} (${preview.recordCount} records)`);
         json(res, 200, preview);
       } catch (err) {

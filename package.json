@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run build:server",
-    "build:server": "tsc -p tsconfig.server.json",
+    "build:server": "tsc -p tsconfig.server.json && mkdir -p dist-server/lib && cp server/lib/*.cjs dist-server/lib/",
     "start": "node dist-server/production.js",
     "push-data": "bash scripts/push-to-prod.sh",
     "lint": "eslint .",
@@ -19,6 +19,7 @@
     "express": "^4.22.1",
     "lucide-react": "^0.577.0",
     "papaparse": "^5.5.3",
+    "pdf-parse": "^2.4.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "recharts": "^3.7.0",

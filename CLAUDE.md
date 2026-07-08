@@ -203,6 +203,7 @@ Database: `data/stack.db` (WAL mode, auto-created on first `npm run dev`)
 | `fact_discount_summary` | `(period, discount_name)` | `INSERT OR REPLACE` |
 | `fact_billboard_monthly` | `(month, location)` | `INSERT OR REPLACE` — Lamar proof-of-play |
 | `fact_marketing_funding` | `(month, source)` | `INSERT OR REPLACE` — co-op / in-kind (e.g. Hero Labs) |
+| `fact_social_monthly` | `(month, platform)` | `INSERT OR REPLACE` — Hello Digital FB/IG PDF KPIs; latest report restates the year and wins |
 | `fact_onelink_daily` | `(date, tracking_code)` | `INSERT OR REPLACE` |
 | `fact_amp_campaign` | `(month, campaign_type, campaign_name)` | `INSERT OR REPLACE` |
 | `fact_other_campaign` | `(month, source, campaign_name)` | `INSERT OR REPLACE` |
@@ -231,6 +232,7 @@ node scripts/ingest-discounts.cjs <file> <YYYY-MM>      # Toast discount summary
 node scripts/ingest-billboard.cjs <YYYY-MM> --plays-... # Lamar proof-of-play (from PDF)
 node scripts/ingest-crm.cjs <csv> <YYYY-MM>             # Incentivio CRM snapshot
 node scripts/derive-incentivio-metrics.cjs <YYYY-MM>    # after CRM ingest
+node scripts/ingest-social.cjs <pdf> <YYYY>             # Hello Digital FB/IG PDF (year not in PDF)
 
 node scripts/verify-month.cjs [YYYY-MM]        # month-close checklist; exit 1 = gaps
 node scripts/check-categorizer-sync.cjs        # after touching categorize keywords

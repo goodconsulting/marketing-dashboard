@@ -1,6 +1,7 @@
 import { useState, useCallback, lazy, Suspense } from 'react';
 import { Header } from './components/Header';
 import { FileUpload } from './components/FileUpload';
+import { MonthCloseCard } from './components/MonthCloseCard';
 import { useDashboardStore } from './store';
 import { useToastSync } from './hooks/useToastSync';
 import type { ToastSales } from './types';
@@ -36,6 +37,12 @@ const ReportView = lazy(() =>
 const SettingsView = lazy(() =>
   import('./components/SettingsView').then(m => ({ default: m.SettingsView }))
 );
+const SocialView = lazy(() =>
+  import('./components/SocialView').then(m => ({ default: m.SocialView }))
+);
+const DataHealthView = lazy(() =>
+  import('./components/DataHealthView').then(m => ({ default: m.DataHealthView }))
+);
 
 // ─── Tab loading spinner ────────────────────────────────────────────
 function TabSpinner() {
@@ -50,6 +57,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const store = useDashboardStore();
   const { snapshots, addToastSales } = store;
+
+  // Scorecard → Upload navigation (red ✗ chips preselect the missing source)
+  const [pendingUploadSource, setPendingUploadSource] = useState<string | null>(null);
+  const goToUpload = useCallback((sourceKey: string) => {
+    setPendingUploadSource(sourceKey);
+    setActiveTab('upload');
+  }, []);
 
   // Toast POS sync hook — pushes API data through the store to SQLite
   const handleToastSales = useCallback(
@@ -76,7 +90,21 @@ export default function App() {
       <main className="ml-[220px] min-h-screen px-6 py-6 max-w-[1400px]">
         <Suspense fallback={<TabSpinner />}>
           {activeTab === 'overview' && (
-            <OverviewView snapshots={snapshots} annualBudget={store.state.annualBudget} customers={store.state.crmCustomers} ampCampaigns={store.state.ampCampaigns} billboardData={store.state.billboardData} onelinkData={store.state.onelinkData} />
+            <div className="space-y-6">
+              <MonthCloseCard
+                onGoToUpload={goToUpload}
+                refreshToken={store.state.uploadedFiles.length}
+              />
+              <OverviewView snapshots={snapshots} annualBudget={store.state.annualBudget} customers={store.state.crmCustomers} ampCampaigns={store.state.ampCampaigns} billboardData={store.state.billboardData} onelinkData={store.state.onelinkData} />
+            </div>
+          )}
+
+          {activeTab === 'social' && (
+            <SocialView social={store.state.socialMonthly} />
+          )}
+
+          {activeTab === 'datahealth' && (
+            <DataHealthView onGoToUpload={goToUpload} />
           )}
 
           {activeTab === 'spend' && (
@@ -145,6 +173,7 @@ export default function App() {
               uploadedFiles={store.state.uploadedFiles}
               onClearData={store.clearAllData}
               onUploadConfirmed={store.refresh}
+              preselectSource={pendingUploadSource}
             />
           )}
 

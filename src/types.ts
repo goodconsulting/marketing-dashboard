@@ -12,7 +12,8 @@ export type DataSourceType =
   | 'expenses'
   | 'budget'
   | 'onelink'
-  | 'discount_summary';
+  | 'discount_summary'
+  | 'social_pdf';
 
 export interface MonthlyExpense {
   id: string;
@@ -320,6 +321,40 @@ export interface BillboardMonthly {
   contractedDays: number;
 }
 
+// ─── Social Monthly (Hello Digital: Facebook / Instagram) ────────
+
+export interface SocialMonthly {
+  month: string;
+  platform: 'facebook' | 'instagram';
+  followers: number;
+  engagement: number;
+  impressions: number;
+  reach: number;
+  profileVisits: number;
+  websiteClicks: number;
+}
+
+// ─── Month Close Status (landing-page scorecard) ─────────────────
+
+export interface MonthSourceCheck {
+  key: string;
+  label: string;
+  required: boolean;
+  rows: number;
+  total: number | null;
+  present: boolean;
+}
+
+export interface MonthStatus {
+  month: string;
+  checks: MonthSourceCheck[];
+  gaps: number;
+  grossSpend: number;
+  coopFunding: number;
+  revenue: number;
+  roiComputable: boolean;
+}
+
 // ─── Other Campaigns (Yelp, TikTok, LinkedIn, long-tail) ─────────
 
 export interface OtherCampaign {
@@ -499,4 +534,7 @@ export interface DashboardState {
 
   // Stage transitions (derived from CRM snapshot history)
   stageTransitions: StageTransition[];
+
+  // Organic social KPIs (Hello Digital monthly PDFs)
+  socialMonthly: SocialMonthly[];
 }

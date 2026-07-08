@@ -414,6 +414,27 @@ CREATE TABLE IF NOT EXISTS fact_billboard_monthly (
 );
 `;
 
+// Hello Digital Marketing monthly social KPIs (Facebook / Instagram),
+// parsed from their PDF year-grid reports. Each report restates the whole
+// year, so ingestion replaces every month present (latest report wins).
+// INSERT OR REPLACE keyed on (month, platform).
+const FACT_SOCIAL_MONTHLY = `
+CREATE TABLE IF NOT EXISTS fact_social_monthly (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  month TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  followers INTEGER DEFAULT 0,
+  engagement INTEGER DEFAULT 0,
+  impressions INTEGER DEFAULT 0,
+  reach INTEGER DEFAULT 0,
+  profile_visits INTEGER DEFAULT 0,
+  website_clicks INTEGER DEFAULT 0,
+  source TEXT,
+  synced_at TEXT,
+  UNIQUE(month, platform)
+);
+`;
+
 // Stage transitions: materialized from consecutive CRM snapshot pairs.
 // One row per detected stage change per customer. Direction derived from
 // the canonical stage ladder (UNKNOWN=0, SLIDER=1, ROOKIE=2, REGULAR=3,
@@ -569,6 +590,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   FACT_BUDGET,
   FACT_AMP_CAMPAIGN,
   FACT_BILLBOARD_MONTHLY,
+  FACT_SOCIAL_MONTHLY,
   FACT_OTHER_CAMPAIGN,
   FACT_MARKETING_FUNDING,
   FACT_STAGE_TRANSITION,
@@ -596,6 +618,7 @@ export const TABLE_NAMES = [
   'fact_budget',
   'fact_amp_campaign',
   'fact_billboard_monthly',
+  'fact_social_monthly',
   'fact_other_campaign',
   'fact_marketing_funding',
   'fact_stage_transition',

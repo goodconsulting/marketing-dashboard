@@ -12,7 +12,7 @@ import type {
   MenuIntelligenceItem, IncentivioMetrics, UploadedFile,
   MonthlySnapshot, UploadPreview, ConfirmResult, OneLinkDaily,
   DiscountSummary, AmpCampaign, BillboardMonthly, OtherCampaign,
-  StageTransition,
+  StageTransition, SocialMonthly, MonthStatus,
 } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -53,6 +53,7 @@ export interface ServerState {
   ampCampaigns: AmpCampaign[];
   billboardData: BillboardMonthly[];
   otherCampaigns: OtherCampaign[];
+  socialMonthly: SocialMonthly[];
   stageTransitions: StageTransition[];
   uploads: UploadedFile[];
   annualBudget: number;
@@ -61,6 +62,22 @@ export interface ServerState {
 /** Fetch the entire dashboard state in one request (initial hydration). */
 export function fetchState(): Promise<ServerState> {
   return fetchJson<ServerState>('/api/data/state');
+}
+
+// ─── Month Close Status (scorecard) ───────────────────────────────
+
+export function fetchMonthStatus(month: string): Promise<MonthStatus> {
+  return fetchJson<MonthStatus>('/api/data/month-status' + qs({ month }));
+}
+
+export function fetchYearStatus(year: string): Promise<MonthStatus[]> {
+  return fetchJson<MonthStatus[]>('/api/data/month-status' + qs({ year }));
+}
+
+// ─── Social Monthly KPIs ──────────────────────────────────────────
+
+export function fetchSocialMonthly(month?: string): Promise<SocialMonthly[]> {
+  return fetchJson<SocialMonthly[]>('/api/data/social' + qs({ month }));
 }
 
 // ─── Snapshots ────────────────────────────────────────────────────
@@ -134,9 +151,9 @@ export function fetchUploads(): Promise<UploadedFile[]> {
 // ─── Upload Pipeline ──────────────────────────────────────────────
 
 /** Upload a file for preview (stage in memory, no DB write yet). */
-export async function uploadFile(file: File, month?: string): Promise<UploadPreview> {
+export async function uploadFile(file: File, month?: string, source?: string): Promise<UploadPreview> {
   const buffer = await file.arrayBuffer();
-  const params = qs({ filename: file.name, month });
+  const params = qs({ filename: file.name, month, source });
   return fetchJson<UploadPreview>('/api/data/upload' + params, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },

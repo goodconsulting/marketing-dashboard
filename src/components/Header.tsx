@@ -2,12 +2,14 @@ import {
   LayoutDashboard,
   Wallet,
   BarChart3,
+  Share2,
   Target,
   Heart,
   Waypoints,
   UtensilsCrossed,
   MapPin,
   FileText,
+  Activity,
   Upload,
   Settings,
 } from 'lucide-react';
@@ -21,6 +23,7 @@ const MAIN_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'spend', label: 'Spend & Budget', icon: Wallet },
   { id: 'performance', label: 'Performance', icon: BarChart3 },
+  { id: 'social', label: 'Social', icon: Share2 },
   { id: 'attribution', label: 'CAC & ROI', icon: Target },
   { id: 'customers', label: 'Customer Health', icon: Heart },
   { id: 'valuemap', label: 'Value Map', icon: Waypoints },
@@ -30,6 +33,7 @@ const MAIN_TABS = [
 ];
 
 const UTILITY_TABS = [
+  { id: 'datahealth', label: 'Data Health', icon: Activity },
   { id: 'upload', label: 'Upload Data', icon: Upload },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];

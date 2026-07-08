@@ -14,12 +14,13 @@
 
 import { getDb } from './connection.ts';
 import { SCHEMA_STATEMENTS, TABLE_NAMES } from './schema.ts';
+import { runMonthChecks } from '../lib/month-checks.cjs';
 import type {
   MonthlyExpense, MetaCampaign, MetaAdSet, GoogleCampaign, GoogleDaily,
   StoreSales, IncentivioMetrics, MonthlyBudget, SpendCategory,
   CRMCustomerRecord, MenuIntelligenceItem, OneLinkDaily,
   DiscountSummary, JourneyStage, AmpCampaign, BillboardMonthly, OtherCampaign,
-  StageTransition,
+  StageTransition, SocialMonthly, MonthStatus,
 } from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -142,9 +143,21 @@ interface UploadLogRow {
   confirmed_at: string | null;
 }
 
-export function getUploadLog(): UploadLogRow[] {
+/** Upload history in the client's UploadedFile shape (camelCase). */
+export function getUploadLog(): Array<{
+  id: string; filename: string; uploadedAt: string;
+  sourceType: string; recordCount: number; monthCovered: string;
+}> {
   const db = getDb();
-  return db.prepare('SELECT * FROM upload_log ORDER BY created_at DESC').all() as UploadLogRow[];
+  const rows = db.prepare('SELECT * FROM upload_log ORDER BY created_at DESC').all() as UploadLogRow[];
+  return rows.map(r => ({
+    id: r.id,
+    filename: r.filename,
+    uploadedAt: r.confirmed_at || r.created_at,
+    sourceType: r.source_type,
+    recordCount: r.record_count,
+    monthCovered: r.month_covered || '',
+  }));
 }
 
 export function createUploadEntry(
@@ -841,6 +854,66 @@ export function getBillboardMonthly(month?: string): BillboardMonthly[] {
     variancePct: r.variance_pct, numCreatives: r.num_creatives,
     contractedDays: r.contracted_days,
   }));
+}
+
+// ── Social Monthly (Hello Digital PDFs) ──────────────────────────────────
+
+export function insertSocialMonthly(records: SocialMonthly[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO fact_social_monthly
+    (month, platform, followers, engagement, impressions, reach, profile_visits, website_clicks, source, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `);
+  const dimStmt = db.prepare('INSERT OR IGNORE INTO dim_month (month) VALUES (?)');
+  let inserted = 0;
+  db.transaction(() => {
+    for (const r of records) {
+      dimStmt.run(r.month);
+      stmt.run(
+        r.month, r.platform, r.followers, r.engagement, r.impressions,
+        r.reach, r.profileVisits, r.websiteClicks, 'upload',
+      );
+      inserted++;
+    }
+  })();
+  return inserted;
+}
+
+export function getSocialMonthly(month?: string): SocialMonthly[] {
+  const db = getDb();
+  const query = month
+    ? 'SELECT * FROM fact_social_monthly WHERE month = ? ORDER BY month, platform'
+    : 'SELECT * FROM fact_social_monthly ORDER BY month, platform';
+  const rows = (month ? db.prepare(query).all(month) : db.prepare(query).all()) as Array<{
+    month: string; platform: string; followers: number; engagement: number;
+    impressions: number; reach: number; profile_visits: number; website_clicks: number;
+  }>;
+  return rows.map(r => ({
+    month: r.month,
+    platform: r.platform as SocialMonthly['platform'],
+    followers: r.followers, engagement: r.engagement,
+    impressions: r.impressions, reach: r.reach,
+    profileVisits: r.profile_visits, websiteClicks: r.website_clicks,
+  }));
+}
+
+// ── Month Close Status (scorecard; checks shared with scripts/verify-month.cjs) ──
+
+export function getMonthStatus(month: string): MonthStatus {
+  const db = getDb();
+  const { checks, gaps } = runMonthChecks(db, month);
+  const sum = (sql: string): number => {
+    const row = db.prepare(sql).get(month) as { t: number | null } | undefined;
+    return row?.t ?? 0;
+  };
+  const grossSpend = sum('SELECT ROUND(SUM(amount),2) t FROM fact_expense WHERE month=?');
+  const coopFunding = sum('SELECT ROUND(SUM(amount),2) t FROM fact_marketing_funding WHERE month=?');
+  const revenue = sum('SELECT ROUND(SUM(gross_sales),2) t FROM fact_store_sales WHERE month=?');
+  return {
+    month, checks, gaps, grossSpend, coopFunding, revenue,
+    roiComputable: grossSpend > 0 && revenue > 0,
+  };
 }
 
 // ── Other Campaigns (long-tail paid media) ────────────────────────────────

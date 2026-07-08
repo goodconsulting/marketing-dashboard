@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Upload, FileText, Check, AlertCircle, Trash2, FileWarning, X, Eye } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Upload, FileText, Check, AlertCircle, Trash2, FileWarning, X, Eye, Info } from 'lucide-react';
 import { uploadFile, confirmUpload, cancelUpload } from '../api/dataApi';
 import type { DataSourceType, UploadPreview, UploadedFile } from '../types';
 
@@ -7,6 +7,9 @@ interface FileUploadProps {
   uploadedFiles: UploadedFile[];
   onClearData: () => void;
   onUploadConfirmed: () => void;  // triggers store.refresh()
+  /** Month-close scorecard check key (e.g. 'social_facebook') — preselects
+   *  the source dropdown and shows a which-file hint. */
+  preselectSource?: string | null;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -20,6 +23,35 @@ const SOURCE_LABELS: Record<string, string> = {
   '3po': '3rd Party Delivery',
   expenses: 'Marketing Expenses',
   budget: 'Budget',
+  social_pdf: 'Social Report (Hello Digital PDF)',
+};
+
+/** Source values offered in the manual-override dropdown. */
+const OVERRIDE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Auto-detect source' },
+  { value: 'expenses', label: 'Marketing Expenses (QuickBooks)' },
+  { value: 'meta', label: 'Meta Ads campaigns' },
+  { value: 'google', label: 'Google Ads campaigns' },
+  { value: 'toast', label: 'Toast POS sales' },
+  { value: 'incentivio_crm', label: 'Incentivio CRM export' },
+  { value: 'incentivio_menu', label: 'Menu Intelligence' },
+  { value: 'budget', label: 'Operating Budget' },
+  { value: 'social_pdf', label: 'Social Report PDF (Hello Digital)' },
+];
+
+/** Scorecard check key → dropdown preselection + which-file guidance. */
+const CHECK_KEY_GUIDE: Record<string, { source: string; hint: string }> = {
+  expenses: { source: 'expenses', hint: 'QuickBooks "Advertising & marketing" transaction report (XLSX or CSV).' },
+  google: { source: 'google', hint: 'Google Ads campaign export (CSV).' },
+  meta: { source: 'meta', hint: 'Meta ad-level report (CSV).' },
+  sales: { source: 'toast', hint: 'Toast sales export (CSV). Coarse "Location overview" exports are loaded via scripts/ingest-sales.cjs instead.' },
+  discounts: { source: 'auto', hint: 'Toast Discount Summary (XLSX) is currently loaded via scripts/ingest-discounts.cjs.' },
+  crm: { source: 'incentivio_crm', hint: 'Incentivio Customer Export (CSV).' },
+  incentivio: { source: 'incentivio_crm', hint: 'Derived automatically when a CRM export is ingested.' },
+  social_facebook: { source: 'social_pdf', hint: 'Hello Digital "Stack Wellness - Facebook" monthly PDF. The latest report restates the whole year.' },
+  social_instagram: { source: 'social_pdf', hint: 'Hello Digital "Stack Wellness - Instagram" monthly PDF. The latest report restates the whole year.' },
+  billboard: { source: 'auto', hint: 'Lamar proof-of-play PDFs are hand-keyed via scripts/ingest-billboard.cjs.' },
+  coop: { source: 'auto', hint: 'Co-op / in-kind funding is recorded manually in fact_marketing_funding.' },
 };
 
 const DEDUP_ACTION_LABELS: Record<string, string> = {
@@ -29,7 +61,7 @@ const DEDUP_ACTION_LABELS: Record<string, string> = {
   snapshot_replace: 'Previous snapshot for this month will be replaced',
 };
 
-export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed }: FileUploadProps) {
+export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed, preselectSource }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [preview, setPreview] = useState<UploadPreview | null>(null);
@@ -37,6 +69,13 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed }: Fi
   const [lastResult, setLastResult] = useState<{ filename: string; count: number; type: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [sourceOverride, setSourceOverride] = useState('auto');
+
+  // Scorecard navigation: preselect the source and surface guidance
+  const guide = preselectSource ? CHECK_KEY_GUIDE[preselectSource] : undefined;
+  useEffect(() => {
+    if (guide) setSourceOverride(guide.source);
+  }, [guide]);
 
   // ─── Stage a file for preview ──────────────────────────────────
   const processFile = useCallback(async (file: File) => {
@@ -59,18 +98,26 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed }: Fi
         return;
       }
 
-      // PDF guard
-      if (file.name.toLowerCase().endsWith('.pdf')) {
+      // PDF guard — only Hello Digital social reports are parseable as PDF
+      const isPdf = file.name.toLowerCase().endsWith('.pdf');
+      const lower = file.name.toLowerCase();
+      const looksSocial = lower.includes('facebook') || lower.includes('instagram');
+      if (isPdf && sourceOverride !== 'social_pdf' && !looksSocial) {
         setWarning(
-          `PDF files can't be auto-parsed. "${file.name}" was skipped. ` +
-          `To import this data, export it as CSV from the source platform.`
+          `Only Hello Digital social report PDFs can be auto-parsed. ` +
+          `For other PDFs (e.g. Lamar proof-of-play), use the CLI ingest scripts, ` +
+          `or select "Social Report PDF" if this is a misnamed Hello Digital file.`
         );
         setProcessing(false);
         return;
       }
 
       // Upload to server for preview
-      const result = await uploadFile(file);
+      const result = await uploadFile(
+        file,
+        undefined,
+        sourceOverride === 'auto' ? undefined : sourceOverride,
+      );
 
       if (result.recordCount === 0) {
         setWarning(`No parseable records found in "${file.name}". Check the file format.`);
@@ -84,7 +131,7 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed }: Fi
     } finally {
       setProcessing(false);
     }
-  }, []);
+  }, [sourceOverride]);
 
   // ─── Confirm the staged upload ─────────────────────────────────
   const handleConfirm = useCallback(async () => {
@@ -144,6 +191,14 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed }: Fi
         )}
       </div>
 
+      {/* Scorecard guidance banner */}
+      {guide && !preview && (
+        <div className="flex items-start gap-2 p-3 bg-blue-50 text-blue-800 rounded-lg text-sm">
+          <Info size={16} className="mt-0.5 shrink-0" />
+          <span>{guide.hint}</span>
+        </div>
+      )}
+
       {/* Drop zone (hidden during preview) */}
       {!preview && (
         <div
@@ -155,14 +210,26 @@ export function FileUpload({ uploadedFiles, onClearData, onUploadConfirmed }: Fi
           onDrop={handleDrop}
         >
           <Upload size={40} className="mx-auto text-gray-400 mb-3" />
-          <p className="text-gray-600 mb-2">Drag & drop a CSV or XLSX file here</p>
+          <p className="text-gray-600 mb-2">Drag & drop a CSV, XLSX, or social report PDF here</p>
           <p className="text-xs text-gray-400 mb-4">
-            Auto-detects: Meta Campaigns, Google Ads, QuickBooks Expenses, Incentivio CRM, Menu Intelligence, Operating Budget, Toast POS
+            Auto-detects: Meta Campaigns, Google Ads, QuickBooks Expenses, Incentivio CRM, Menu Intelligence, Operating Budget, Toast POS, Hello Digital Social PDFs
           </p>
-          <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#2D5A3D] text-white rounded-lg cursor-pointer hover:bg-[#4A7C5C] text-sm">
-            <FileText size={16} /> Choose File
-            <input type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={handleFileSelect} />
-          </label>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <select
+              value={sourceOverride}
+              onChange={e => setSourceOverride(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700"
+              title="Force a source type when auto-detection guesses wrong"
+            >
+              {OVERRIDE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#2D5A3D] text-white rounded-lg cursor-pointer hover:bg-[#4A7C5C] text-sm">
+              <FileText size={16} /> Choose File
+              <input type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFileSelect} />
+            </label>
+          </div>
         </div>
       )}
 

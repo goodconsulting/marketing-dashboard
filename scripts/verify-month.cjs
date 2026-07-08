@@ -10,12 +10,13 @@
  * 1 = gaps. Use the exit code as a /goal stop condition or in the monthly
  * close routine.
  *
- * REQUIRED vs optional is defined in the CHECKS table below — edit `required`
- * flags as contracts change (e.g. set billboard required:true if a new panel
- * contract makes proof-of-play a must-load).
+ * The checklist itself lives in server/lib/month-checks.cjs — shared with the
+ * dashboard's month-status API so CLI and scorecard can never disagree.
+ * Edit `required` flags there as contracts change.
  */
 const path = require('path');
 const Database = require('better-sqlite3');
+const { runMonthChecks } = require('../server/lib/month-checks.cjs');
 
 let MONTH = process.argv[2];
 if (!MONTH) {
@@ -30,42 +31,14 @@ if (!/^\d{4}-\d{2}$/.test(MONTH)) {
 
 const db = new Database(path.join(__dirname, '..', 'data', 'stack.db'), { readonly: true });
 
-const CHECKS = [
-  { key: 'expenses', label: 'Marketing expenses (QuickBooks)', required: true,
-    sql: "SELECT COUNT(*) n, ROUND(SUM(amount),2) total FROM fact_expense WHERE month=?" },
-  { key: 'google', label: 'Google Ads campaigns', required: true,
-    sql: "SELECT COUNT(*) n, ROUND(SUM(cost),2) total FROM fact_google_campaign WHERE month=?" },
-  { key: 'meta', label: 'Meta Ads campaigns', required: true,
-    sql: "SELECT COUNT(*) n, ROUND(SUM(spend),2) total FROM fact_meta_campaign WHERE month=?" },
-  { key: 'sales', label: 'Toast store sales', required: true,
-    sql: "SELECT COUNT(*) n, ROUND(SUM(gross_sales),2) total FROM fact_store_sales WHERE month=?" },
-  { key: 'discounts', label: 'Toast discount summary', required: true,
-    sql: "SELECT COUNT(*) n, ROUND(SUM(discount_amount),2) total FROM fact_discount_summary WHERE period=?" },
-  { key: 'crm', label: 'Incentivio CRM snapshot', required: true,
-    sql: "SELECT COUNT(*) n, NULL total FROM fact_crm_customer_snapshot WHERE snapshot_month=?" },
-  { key: 'incentivio', label: 'Incentivio derived metrics', required: true,
-    sql: "SELECT COUNT(*) n, NULL total FROM fact_incentivio_metrics WHERE month=?" },
-  { key: 'billboard', label: 'Lamar billboard proof-of-play', required: false,
-    sql: "SELECT COUNT(*) n, ROUND(SUM(plays_delivered),0) total FROM fact_billboard_monthly WHERE month=?" },
-  { key: 'coop', label: 'Co-op / in-kind funding', required: false,
-    sql: "SELECT COUNT(*) n, ROUND(SUM(amount),2) total FROM fact_marketing_funding WHERE month=?" },
-];
-
 console.log(`\n═══ Month close status: ${MONTH} ═══\n`);
-const results = [];
-let gaps = 0;
-for (const c of CHECKS) {
-  const r = db.prepare(c.sql).get(MONTH);
-  const present = r.n > 0;
-  if (!present && c.required) gaps++;
-  results.push({
-    source: c.label,
-    status: present ? '✅' : c.required ? '❌ MISSING' : '— (optional)',
-    rows: r.n,
-    total: r.total != null ? `$${r.total}` : '',
-  });
-}
-console.table(results);
+const { checks, gaps } = runMonthChecks(db, MONTH);
+console.table(checks.map((c) => ({
+  source: c.label,
+  status: c.present ? '✅' : c.required ? '❌ MISSING' : '— (optional)',
+  rows: c.rows,
+  total: c.total != null ? `$${c.total}` : '',
+})));
 
 // ── Derived ROI inputs ──
 const spend = db.prepare('SELECT ROUND(SUM(amount),2) t FROM fact_expense WHERE month=?').get(MONTH).t || 0;
