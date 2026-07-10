@@ -194,7 +194,7 @@ Database: `data/stack.db` (WAL mode, auto-created on first `npm run dev`)
 
 | Table | Dedup Key (UNIQUE) | Strategy |
 |-------|-------------------|----------|
-| `fact_expense` | `(date, vendor, amount)` | `INSERT OR IGNORE` |
+| `fact_expense` | `(date, vendor, description, amount)` | `INSERT OR IGNORE` |
 | `fact_meta_campaign` | `(month, campaign_name)` | `INSERT OR IGNORE` |
 | `fact_google_campaign` | `(month, campaign_name)` | `INSERT OR IGNORE` |
 | `fact_google_daily` | `date` (PK) | `INSERT OR REPLACE` |
@@ -219,7 +219,10 @@ Database: `data/stack.db` (WAL mode, auto-created on first `npm run dev`)
 | `Memo/Description` or `Description` | No | Used for auto-categorization |
 | `Amount` | Yes | Can include `$` and commas |
 
-Also supports XLSX/XLS format with same columns.
+Also supports XLSX/XLS format with same columns. XLSX columns are resolved by
+header name (title rows above the header row are skipped); a trailing `Balance`
+column is never read as `Amount`. Filenames containing `transaction` (e.g.
+QuickBooks "Transaction Report") are detected as expenses.
 
 ### Meta (Facebook/Instagram) Campaigns
 

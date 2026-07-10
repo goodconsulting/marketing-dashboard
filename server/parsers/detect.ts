@@ -48,6 +48,8 @@ export function detectSourceFromFilename(filename: string): DataSourceType | nul
   // QuickBooks / general expenses
   if (lower.includes('expense') || (lower.includes('marketing') && lower.includes('exp'))) return 'expenses';
   if (lower.includes('quickbooks')) return 'expenses';
+  // QuickBooks "Transaction Report" / "Transaction List" exports
+  if (lower.includes('transaction')) return 'expenses';
 
   return null;
 }

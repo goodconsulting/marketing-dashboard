@@ -124,7 +124,7 @@ export function OverviewView({ snapshots, annualBudget }: OverviewViewProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => formatCurrency(v)} />
-            <Tooltip formatter={(v: number) => formatCurrency(v)} />
+            <Tooltip formatter={(v: number | undefined) => formatCurrency(v ?? 0)} />
             <Legend />
             <Bar dataKey="spend" name="Marketing Spend" fill="#2D5A3D" radius={[4,4,0,0]} />
             <Bar dataKey="revenue" name="Gross Revenue" fill="#7CB342" radius={[4,4,0,0]} />

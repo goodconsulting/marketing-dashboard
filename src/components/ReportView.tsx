@@ -247,7 +247,7 @@ export function ReportView({ snapshots }: ReportViewProps) {
               <KPICard
                 label="Revenue"
                 value={summaryKPIs?.rev ? formatMetricValue('Total Revenue', summaryKPIs.rev.current) : '—'}
-                subtitle={summaryKPIs?.rev?.percentChange !== null
+                subtitle={summaryKPIs?.rev?.percentChange != null
                   ? `${(summaryKPIs.rev.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.rev.percentChange}% ${compType}`
                   : undefined}
                 color={(summaryKPIs?.rev?.absoluteChange ?? 0) >= 0 ? '#10b981' : '#ef4444'}
@@ -255,14 +255,14 @@ export function ReportView({ snapshots }: ReportViewProps) {
               <KPICard
                 label="Total Spend"
                 value={summaryKPIs?.spend ? formatMetricValue('Total Spend', summaryKPIs.spend.current) : '—'}
-                subtitle={summaryKPIs?.spend?.percentChange !== null
+                subtitle={summaryKPIs?.spend?.percentChange != null
                   ? `${(summaryKPIs.spend.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.spend.percentChange}% ${compType}`
                   : undefined}
               />
               <KPICard
                 label="Est. CAC"
                 value={summaryKPIs?.cac ? formatMetricValue('Est. CAC', summaryKPIs.cac.current) : '—'}
-                subtitle={summaryKPIs?.cac?.percentChange !== null
+                subtitle={summaryKPIs?.cac?.percentChange != null
                   ? `${(summaryKPIs.cac.percentChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.cac.percentChange}% ${compType}`
                   : undefined}
                 color={(summaryKPIs?.cac?.absoluteChange ?? 0) <= 0 ? '#10b981' : '#ef4444'}
@@ -270,7 +270,7 @@ export function ReportView({ snapshots }: ReportViewProps) {
               <KPICard
                 label="Est. ROI"
                 value={summaryKPIs?.roi ? `${summaryKPIs.roi.current.toFixed(1)}%` : '—'}
-                subtitle={summaryKPIs?.roi?.percentChange !== null
+                subtitle={summaryKPIs?.roi?.percentChange != null
                   ? `${(summaryKPIs.roi.absoluteChange ?? 0) >= 0 ? '+' : ''}${summaryKPIs.roi.absoluteChange.toFixed(1)}pp`
                   : undefined}
                 color={(summaryKPIs?.roi?.absoluteChange ?? 0) >= 0 ? '#10b981' : '#ef4444'}

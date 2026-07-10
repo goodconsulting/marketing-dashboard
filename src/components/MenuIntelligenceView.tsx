@@ -7,7 +7,7 @@ import { KPICard } from './KPICard';
 import { ExportButton } from './ExportButton';
 import { exportData, todayString } from '../utils/export';
 import type { ExportFormat } from '../utils/export';
-import { UtensilsCrossed, Star, AlertTriangle, TrendingUp } from 'lucide-react';
+import { UtensilsCrossed } from 'lucide-react';
 import type { MenuIntelligenceItem } from '../types';
 import { QUADRANT_COLORS } from '../utils/theme';
 
@@ -102,7 +102,7 @@ export function MenuIntelligenceView({ items }: MenuIntelligenceViewProps) {
 
   // ─── Filtered & Sorted Table ───
   const tableItems = useMemo(() => {
-    let filtered = selectedQuadrant
+    const filtered = selectedQuadrant
       ? items.filter(i => i.menuQuadrant === selectedQuadrant)
       : items;
 
@@ -270,7 +270,7 @@ export function MenuIntelligenceView({ items }: MenuIntelligenceViewProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} />
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Tooltip formatter={(v: number | undefined) => formatCurrency(v ?? 0)} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="revenue" name="Revenue" fill="#2D5A3D" radius={[0, 4, 4, 0]} />
             </BarChart>
