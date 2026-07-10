@@ -13,6 +13,8 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'meta': 'paid_media',
   'yelp': 'paid_media',
   'indeed': 'paid_media',
+  'linkedin': 'paid_media',
+  'sinclair': 'paid_media',
 
   // Direct Mail & Print
   'allegra': 'direct_mail_print',
@@ -35,6 +37,7 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'workspace': 'software_fees',
   'bright local': 'software_fees',
   'brightlocal': 'software_fees',
+  'giftameal': 'software_fees',
 
   // Labor
   'hoskins': 'labor',

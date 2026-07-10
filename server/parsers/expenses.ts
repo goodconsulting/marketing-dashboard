@@ -31,7 +31,9 @@ export function parseExpensesCSV(csvContent: string, sourceFilename = ''): Month
     const vendor = row['Name'] || row['Vendor'] || row['Merchant'] || '';
     const desc = row['Memo/Description'] || row['Description'] || '';
     const amountStr = row['Amount'] || '0';
-    const amount = Math.abs(parseNum(amountStr));
+    // Sign is preserved: credits/refunds/deposits are negative and must
+    // subtract from spend, matching QuickBooks' own report totals.
+    const amount = parseNum(amountStr);
 
     if (!date || amount === 0) continue;
 
@@ -97,10 +99,14 @@ function xlsxCellToDateString(dateVal: unknown): string {
   return '';
 }
 
-/** Amount cells may be numbers or formatted strings ("1,964.52"). */
+/**
+ * Amount cells may be numbers or formatted strings ("1,964.52"). Sign is
+ * preserved: credits/refunds/deposits are negative and must subtract from
+ * spend, matching QuickBooks' own report totals.
+ */
 function xlsxCellToAmount(val: unknown): number {
-  if (typeof val === 'number') return Math.abs(val);
-  if (typeof val === 'string') return Math.abs(parseNum(val));
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') return parseNum(val);
   return 0;
 }
 
