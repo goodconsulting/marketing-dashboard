@@ -267,7 +267,10 @@ overwrites it with the last-processed stage's average. Use `incentivioMetrics.lt
 | `Memo/Description` or `Description` | No | Used for auto-categorization |
 | `Amount` | Yes | Can include `$` and commas |
 
-Also supports XLSX/XLS format with same columns.
+Also supports XLSX/XLS format with same columns. XLSX columns are resolved by
+header name (title rows above the header row are skipped); a trailing `Balance`
+column is never read as `Amount`. Filenames containing `transaction` (e.g.
+QuickBooks "Transaction Report") are detected as expenses.
 
 ### Meta (Facebook/Instagram) Campaigns
 

@@ -9,6 +9,8 @@
  * Dedup strategy varies by table — see inline comments.
  */
 
+import type Database from 'better-sqlite3';
+
 // ---------------------------------------------------------------------------
 // Dimension tables
 // ---------------------------------------------------------------------------
@@ -183,7 +185,10 @@ CREATE TABLE IF NOT EXISTS fact_menu_item_snapshot (
 );
 `;
 
-// Expenses: INSERT OR IGNORE on (date, vendor, amount) — skip exact dupes.
+// Expenses: INSERT OR IGNORE on (date, vendor, description, amount) — skip
+// exact dupes. Description is part of the key: the same vendor can legitimately
+// charge the same amount twice on one day (e.g. two Facebook campaigns at
+// $506.00), distinguishable only by memo text.
 const FACT_EXPENSE = `
 CREATE TABLE IF NOT EXISTS fact_expense (
   id          TEXT PRIMARY KEY,
@@ -598,6 +603,30 @@ export const SCHEMA_STATEMENTS: string[] = [
   SETTINGS,
   INDEXES,
 ];
+
+/**
+ * Rebuild fact_expense if its dedup key predates the inclusion of
+ * description — the old (date, vendor, amount) key collapsed distinct
+ * same-day charges of the same amount. Loosening a UNIQUE constraint
+ * requires a table rebuild in SQLite; existing rows are preserved.
+ */
+export function migrateExpenseDedupKey(db: Database.Database): void {
+  const indexes = db.pragma(`index_list('fact_expense')`) as Array<{ name: string; unique: number }>;
+  for (const idx of indexes) {
+    if (!idx.unique) continue;
+    const cols = (db.pragma(`index_info('${idx.name}')`) as Array<{ name: string }>).map(c => c.name);
+    if (cols.includes('description')) return; // already on the new key
+  }
+
+  db.exec(`
+    ALTER TABLE fact_expense RENAME TO fact_expense_legacy;
+    ${FACT_EXPENSE}
+    INSERT OR IGNORE INTO fact_expense (id, date, month, vendor, description, amount, category, source)
+      SELECT id, date, month, vendor, description, amount, category, source FROM fact_expense_legacy;
+    DROP TABLE fact_expense_legacy;
+    CREATE INDEX IF NOT EXISTS idx_expense_month ON fact_expense(month);
+  `);
+}
 
 /** All table names for health checks and diagnostics. */
 export const TABLE_NAMES = [

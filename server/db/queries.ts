@@ -13,7 +13,7 @@
  */
 
 import { getDb } from './connection.ts';
-import { SCHEMA_STATEMENTS, TABLE_NAMES } from './schema.ts';
+import { SCHEMA_STATEMENTS, TABLE_NAMES, migrateExpenseDedupKey } from './schema.ts';
 import { runMonthChecks } from '../lib/month-checks.cjs';
 import type {
   MonthlyExpense, MetaCampaign, MetaAdSet, GoogleCampaign, GoogleDaily,
@@ -33,6 +33,7 @@ export function initializeDatabase(): void {
     for (const sql of SCHEMA_STATEMENTS) {
       db.exec(sql);
     }
+    migrateExpenseDedupKey(db);
   })();
 
   // ── Migrations ────────────────────────────────────────────────────
@@ -1431,10 +1432,10 @@ export function analyzeExpenseDedup(expenses: MonthlyExpense[]): DedupAnalysis {
   const db = getDb();
   let duplicates = 0;
   const stmt = db.prepare(
-    'SELECT COUNT(*) as cnt FROM fact_expense WHERE date = ? AND vendor = ? AND amount = ?'
+    'SELECT COUNT(*) as cnt FROM fact_expense WHERE date = ? AND vendor = ? AND IFNULL(description, \'\') = ? AND amount = ?'
   );
   for (const e of expenses) {
-    const row = stmt.get(e.date, e.vendor, e.amount) as { cnt: number };
+    const row = stmt.get(e.date, e.vendor, e.description ?? '', e.amount) as { cnt: number };
     if (row.cnt > 0) duplicates++;
   }
   return {
@@ -1443,7 +1444,7 @@ export function analyzeExpenseDedup(expenses: MonthlyExpense[]): DedupAnalysis {
     duplicates,
     strategy: 'insert_or_ignore',
     message: duplicates > 0
-      ? `${duplicates} duplicate expenses will be skipped (same date + vendor + amount)`
+      ? `${duplicates} duplicate expenses will be skipped (same date + vendor + description + amount)`
       : 'No duplicates detected',
   };
 }
