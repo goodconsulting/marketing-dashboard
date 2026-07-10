@@ -1,4 +1,4 @@
-import { BarChart3, Upload, Settings } from 'lucide-react';
+import { BarChart3, Upload } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: string;

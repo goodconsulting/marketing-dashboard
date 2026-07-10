@@ -152,7 +152,7 @@ export function parseMenuIntelligence(csvContent: string, snapshotMonthOverride?
       name,
       score: parseNum(row['Item Score']),
       price: parseNum(row['Item Price ($)'] || row['Item Price']),
-      parentGroup: (row['Parent group'] || row['Parent Group'] || '').replace(/[\[\]]/g, ''),
+      parentGroup: (row['Parent group'] || row['Parent Group'] || '').replace(/[[\]]/g, ''),
       itemType,
       overUnderState,
       totalSoldLastYear,

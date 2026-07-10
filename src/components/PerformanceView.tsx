@@ -132,7 +132,7 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, googleDaily }:
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
-                <Tooltip formatter={(v: number, name: string) => name === 'spend' ? `$${v}` : v} />
+                <Tooltip formatter={(v: number | undefined, name: string | undefined) => name === 'spend' ? `$${v ?? 0}` : (v ?? 0)} />
                 <Bar dataKey="spend" name="Spend" fill="#3b82f6" radius={[0,4,4,0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -148,7 +148,7 @@ export function PerformanceView({ metaCampaigns, googleCampaigns, googleDaily }:
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
-                <Tooltip formatter={(v: number, name: string) => name === 'spend' ? `$${v}` : v} />
+                <Tooltip formatter={(v: number | undefined, name: string | undefined) => name === 'spend' ? `$${v ?? 0}` : (v ?? 0)} />
                 <Bar dataKey="spend" name="Spend" fill="#f59e0b" radius={[0,4,4,0]} />
               </BarChart>
             </ResponsiveContainer>

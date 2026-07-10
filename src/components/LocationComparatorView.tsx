@@ -44,7 +44,7 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: LocationComparatorViewProps) {
+export function LocationComparatorView({ crmCustomers, toastSales }: LocationComparatorViewProps) {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   // ─── Available Months ───
@@ -245,7 +245,7 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v)} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Tooltip formatter={(v: number | undefined) => formatCurrency(v ?? 0)} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="revenue" name="Revenue" radius={[4, 4, 0, 0]}>
                 {revenueChartData.map((entry, idx) => (
@@ -294,7 +294,7 @@ export function LocationComparatorView({ snapshots, crmCustomers, toastSales }: 
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v)} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Tooltip formatter={(v: number | undefined) => formatCurrency(v ?? 0)} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {allLocations.map(loc => (
                 <Bar

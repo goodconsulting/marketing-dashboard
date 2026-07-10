@@ -248,12 +248,11 @@ export function AttributionView({ snapshots, customers }: AttributionViewProps) 
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="period" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <Tooltip
-                formatter={((value: number, name: string) => [
-                  name.includes('Revenue') ? formatCurrency(value) : value.toLocaleString(),
-                  name,
-                ]) as any}
+                formatter={(value: number | undefined, name: string | number | undefined) => [
+                  String(name ?? '').includes('Revenue') ? formatCurrency(value ?? 0) : (value ?? 0).toLocaleString(),
+                  name ?? '',
+                ]}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="newCustomers" name="New Customers" fill="#2D5A3D" radius={[4, 4, 0, 0]} />

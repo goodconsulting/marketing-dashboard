@@ -173,13 +173,13 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
                 outerRadius={100}
                 paddingAngle={3}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
               >
                 {categoryData.map((entry, i) => (
                   <Cell key={i} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Tooltip formatter={(v: number | undefined) => formatCurrency(v ?? 0)} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -214,7 +214,7 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => formatCurrency(v)} />
-            <Tooltip formatter={(v: number) => formatCurrency(v)} />
+            <Tooltip formatter={(v: number | undefined) => formatCurrency(v ?? 0)} />
             <Legend />
             {(Object.keys(CATEGORY_LABELS) as SpendCategory[]).map(cat => (
               <Bar key={cat} dataKey={cat} name={CATEGORY_LABELS[cat]} stackId="spend" fill={CATEGORY_COLORS[cat]} />
