@@ -50,43 +50,89 @@ export function parseExpensesCSV(csvContent: string, sourceFilename = ''): Month
   return expenses;
 }
 
+interface XlsxColumns {
+  date: number;
+  vendor: number;
+  desc: number;
+  amount: number;
+  headerRowIdx: number;
+}
+
+const DATE_HEADERS = ['transaction date', 'date'];
+const VENDOR_HEADERS = ['name', 'vendor', 'merchant'];
+const DESC_HEADERS = ['memo/description', 'description', 'memo'];
+
+/**
+ * Locate the header row and map columns by name. QuickBooks reports put
+ * title rows above the header, and place a running "Balance" column right
+ * after "Amount" — matching headers exactly is the only safe way to pick
+ * the amount column.
+ */
+function findXlsxColumns(rows: unknown[][]): XlsxColumns | null {
+  for (let i = 0; i < Math.min(rows.length, 25); i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    const cells = row.map(c => String(c ?? '').trim().toLowerCase());
+    const date = cells.findIndex(c => DATE_HEADERS.includes(c));
+    const amount = cells.findIndex(c => c === 'amount');
+    if (date === -1 || amount === -1) continue;
+    return {
+      date,
+      amount,
+      vendor: cells.findIndex(c => VENDOR_HEADERS.includes(c)),
+      desc: cells.findIndex(c => DESC_HEADERS.includes(c)),
+      headerRowIdx: i,
+    };
+  }
+  return null;
+}
+
+/** Date cells may be strings or Excel serial numbers. */
+function xlsxCellToDateString(dateVal: unknown): string {
+  if (typeof dateVal === 'string') return dateVal;
+  if (typeof dateVal === 'number') {
+    const d = XLSX.SSF.parse_date_code(dateVal);
+    return `${d.m.toString().padStart(2, '0')}/${d.d.toString().padStart(2, '0')}/${d.y}`;
+  }
+  return '';
+}
+
+/** Amount cells may be numbers or formatted strings ("1,964.52"). */
+function xlsxCellToAmount(val: unknown): number {
+  if (typeof val === 'number') return Math.abs(val);
+  if (typeof val === 'string') return Math.abs(parseNum(val));
+  return 0;
+}
+
 /**
  * Parse QuickBooks XLSX expense export.
  *
- * XLSX uses column indices (no header row):
- *   [1] = Date, [4] = Vendor, [5] = Description, [8] = Amount
- *
- * Date cells may be Excel serial numbers — XLSX.SSF handles conversion.
+ * Columns are resolved by header name so a trailing "Balance" column is
+ * never mistaken for "Amount". Falls back to the legacy positional layout
+ * ([1]=Date, [4]=Vendor, [5]=Description, [8]=Amount) if no header row
+ * is found. Section/total/footer rows have no date cell and are skipped.
  */
 export function parseExpensesXLSX(buffer: Buffer, sourceFilename = ''): MonthlyExpense[] {
   const wb = XLSX.read(buffer, { type: 'buffer' });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
 
+  const cols = findXlsxColumns(rows)
+    ?? { date: 1, vendor: 4, desc: 5, amount: 8, headerRowIdx: -1 };
+
   const expenses: MonthlyExpense[] = [];
 
-  for (const row of rows) {
+  for (let i = cols.headerRowIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
     if (!Array.isArray(row)) continue;
 
-    const dateVal = row[1];
-    const vendor = row[4];
-    const desc = row[5];
-    const amount = row[8];
+    const dateStr = xlsxCellToDateString(row[cols.date]);
+    const amount = xlsxCellToAmount(row[cols.amount]);
 
-    if (!dateVal || !amount || typeof amount !== 'number' || amount <= 0) continue;
+    if (!dateStr || !dateStr.match(/\d/) || amount === 0) continue;
 
-    let dateStr = '';
-    if (typeof dateVal === 'string') {
-      dateStr = dateVal;
-    } else if (typeof dateVal === 'number') {
-      const d = XLSX.SSF.parse_date_code(dateVal);
-      dateStr = `${d.m.toString().padStart(2, '0')}/${d.d.toString().padStart(2, '0')}/${d.y}`;
-    }
-
-    if (!dateStr || !dateStr.match(/\d/)) continue;
-
-    const vendorStr = String(vendor || '');
-    const descStr = String(desc || '');
+    const vendorStr = cols.vendor === -1 ? '' : String(row[cols.vendor] ?? '');
+    const descStr = cols.desc === -1 ? '' : String(row[cols.desc] ?? '');
 
     expenses.push({
       id: generateId(),
