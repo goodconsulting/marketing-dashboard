@@ -155,17 +155,6 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
     return { ytdSpend, remaining, pctUsed, monthsPassed, year: currentYear };
   }, [snapshots, annualBudget]);
 
-  // Co-op / in-kind funding — vendor money that offsets out-of-pocket spend.
-  // Category spend stays gross; this surfaces the offset and net investment.
-  const coopSummary = useMemo(() => {
-    const scope = selectedMonth === 'all'
-      ? snapshots
-      : snapshots.filter(s => s.month === selectedMonth);
-    const grossSpend = scope.reduce((sum, s) => sum + s.totalSpend, 0);
-    const coOpFunding = scope.reduce((sum, s) => sum + (s.coOpFunding || 0), 0);
-    return { grossSpend, coOpFunding, net: grossSpend - coOpFunding };
-  }, [snapshots, selectedMonth]);
-
   const handleExport = useCallback((format: ExportFormat) => {
     const filtered = selectedMonth === 'all'
       ? expenses
@@ -238,32 +227,6 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
           />
         </div>
       </div>
-
-      {/* Co-op / in-kind funding — gross spend, vendor funding offset, net investment */}
-      {coopSummary.coOpFunding > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">
-            Co-op / In-Kind Funding {selectedMonth === 'all' ? '(YTD)' : `(${formatMonth(selectedMonth)})`}
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <p className="text-xs text-gray-500">Gross Marketing Spend</p>
-              <p className="text-xl font-semibold text-gray-800">{formatCurrency(coopSummary.grossSpend)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Vendor Co-op Funding</p>
-              <p className="text-xl font-semibold text-emerald-600">−{formatCurrency(coopSummary.coOpFunding)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Net Marketing Investment</p>
-              <p className="text-xl font-semibold" style={{ color: '#2D5A3D' }}>{formatCurrency(coopSummary.net)}</p>
-            </div>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">
-            Co-op/in-kind funds from vendors (e.g. Hero Labs) offset out-of-pocket marketing cost. Category spend is shown gross; ROI uses gross spend.
-          </p>
-        </div>
-      )}
 
       {/* Spend by Category — two side-by-side pies */}
       <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
