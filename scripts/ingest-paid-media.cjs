@@ -90,7 +90,11 @@ if (PLATFORM === 'google') {
     c.clicks += int(r['Link clicks']);
     c.results += int(r['Results']);
     c.purchases += int(r['Purchases']);
-    c.conversion_value += num(r['Purchases conversion value']);
+    // Ad-level exports carry an absolute "Purchases conversion value";
+    // campaign-level exports only carry Purchase ROAS as a ratio — derive
+    // the absolute value as spend x ROAS so the Meta ROAS card still works.
+    const rawConvValue = num(r['Purchases conversion value']);
+    c.conversion_value += rawConvValue > 0 ? rawConvValue : spend * num(r['Purchase ROAS (return on ad spend)']);
     if (!c.result_type && (r['Result type'] || '').trim()) c.result_type = r['Result type'].trim();
   }
   campaigns = [...map.values()].map((c) => ({
