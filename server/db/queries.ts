@@ -735,7 +735,7 @@ export function getBudgets(): MonthlyBudget[] {
     month: r.month, totalBudget: r.total_budget,
     byCategory: {
       paid_media: r.paid_media, direct_mail_print: r.direct_mail_print,
-      ooh: r.ooh, software_fees: r.software_fees, labor: r.labor,
+      ooh: r.ooh, software_fees: r.software_fees, labor: r.labor, organic_marketing: 0,
       sponsorship: r.sponsorship || 0, other: r.other,
     },
   }));
@@ -1256,7 +1256,7 @@ function emptySnapshot(month: string): MonthlySnapshot {
   return {
     month,
     totalSpend: 0,
-    spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, sponsorship: 0, other: 0 },
+    spendByCategory: { paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, organic_marketing: 0, sponsorship: 0, other: 0 },
     coOpFunding: 0, netMarketingInvestment: 0,
     budgetedSpend: 0, budgetVariance: 0,
     totalRevenue: 0, revenueByLocation: {}, totalOrders: 0,

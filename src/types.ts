@@ -1,4 +1,4 @@
-export type SpendCategory = 'paid_media' | 'direct_mail_print' | 'ooh' | 'software_fees' | 'labor' | 'sponsorship' | 'other';
+export type SpendCategory = 'paid_media' | 'direct_mail_print' | 'ooh' | 'software_fees' | 'labor' | 'organic_marketing' | 'sponsorship' | 'other';
 
 export type DataSourceType =
   | 'meta'

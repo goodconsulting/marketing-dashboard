@@ -5,6 +5,8 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   // ── Specific overrides (must come BEFORE generic matches) ──
   // "gsuite" and "workspace" must match before "google" to avoid
   // mis-categorizing Google Workspace as Google Ads
+  // "canvas on demand" must match before "canva" (in-store signage, not software)
+  'canvas on demand': 'other',
   'gsuite': 'software_fees',
   'workspace': 'software_fees',
 
@@ -57,7 +59,12 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'hopkins': 'labor',
   'alexis': 'labor',
   'tyce': 'labor',
-  'hello digital': 'labor',
+  'clay b': 'labor',
+  'dev base': 'labor',
+
+  // Organic Marketing (consulting/content, not paid ads — added Jul 2026 per CIO)
+  'hello digital': 'organic_marketing',
+  'goodale consult': 'organic_marketing',
 
   // Sponsorships
   'metro alliance': 'sponsorship',
@@ -74,6 +81,12 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'big green': 'sponsorship',
   'umbrella media': 'sponsorship',
   'downtown events': 'sponsorship',
+  'ragbrai': 'sponsorship',
+  'dyersville': 'sponsorship',
+  'marshalltown': 'sponsorship',
+  'bliss balloon': 'sponsorship',
+  'nhl operating': 'sponsorship',
+  'nhrloperati': 'sponsorship',
 };
 
 export function categorizeExpense(vendor: string, description: string): SpendCategory {
@@ -103,6 +116,7 @@ export const CATEGORY_LABELS: Record<SpendCategory, string> = {
   ooh: 'Out-of-Home (OOH)',
   software_fees: 'Software Fees',
   labor: 'Marketing Labor',
+  organic_marketing: 'Organic Marketing',
   sponsorship: 'Sponsorships',
   other: 'Other',
 };
@@ -113,6 +127,7 @@ export const CATEGORY_COLORS: Record<SpendCategory, string> = {
   ooh: '#8b5cf6',
   software_fees: '#06b6d4',
   labor: '#10b981',
+  organic_marketing: '#84cc16',
   sponsorship: '#ec4899',
   other: '#6b7280',
 };

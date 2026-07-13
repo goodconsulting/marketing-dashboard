@@ -40,6 +40,7 @@ const SOURCE = path.basename(FILE);
 
 // ── Mirror of server/parsers/categorize.ts (checked by check-categorizer-sync.cjs) ──
 const VENDOR_CATEGORIES = {
+  'canvas on demand': 'other',
   'gsuite': 'software_fees', 'workspace': 'software_fees',
   'google': 'paid_media', 'facebook': 'paid_media', 'facebk': 'paid_media',
   'meta': 'paid_media', 'yelp': 'paid_media', 'indeed': 'paid_media',
@@ -55,7 +56,8 @@ const VENDOR_CATEGORIES = {
   'webflow': 'software_fees', 'bright local': 'software_fees', 'brightlocal': 'software_fees',
   'claude.ai': 'software_fees', 'claude ai': 'software_fees', 'giftameal': 'software_fees',
   'hoskins': 'labor', 'hopkins': 'labor', 'alexis': 'labor', 'tyce': 'labor',
-  'hello digital': 'labor',
+  'clay b': 'labor', 'dev base': 'labor',
+  'hello digital': 'organic_marketing', 'goodale consult': 'organic_marketing',
   'metro alliance': 'sponsorship', 'economic alliance': 'sponsorship',
   'cedar rapids metro': 'sponsorship', 'west des moines': 'sponsorship',
   'newbo': 'sponsorship', 'urbandale chamber': 'sponsorship',
@@ -64,6 +66,8 @@ const VENDOR_CATEGORIES = {
   'sponsorship': 'sponsorship',
   'big green': 'sponsorship', 'umbrella media': 'sponsorship',
   'downtown events': 'sponsorship',
+  'ragbrai': 'sponsorship', 'dyersville': 'sponsorship', 'marshalltown': 'sponsorship',
+  'bliss balloon': 'sponsorship', 'nhl operating': 'sponsorship', 'nhrloperati': 'sponsorship',
   'dd marketing': 'paid_media', 'doordash': 'paid_media',
 };
 

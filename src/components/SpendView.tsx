@@ -48,7 +48,7 @@ export function SpendView({ snapshots, expenses, annualBudget }: SpendViewProps)
   // Category breakdown helper — excludes "other" to avoid visual dilution
   function buildCategoryData(source: MonthlySnapshot[]) {
     const totals: Record<SpendCategory, number> = {
-      paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, sponsorship: 0, other: 0,
+      paid_media: 0, direct_mail_print: 0, ooh: 0, software_fees: 0, labor: 0, organic_marketing: 0, sponsorship: 0, other: 0,
     };
     source.forEach(s => {
       for (const cat of Object.keys(totals) as SpendCategory[]) {

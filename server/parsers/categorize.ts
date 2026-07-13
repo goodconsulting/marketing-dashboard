@@ -9,6 +9,8 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   // ── Specific overrides (must come BEFORE generic matches) ──
   // "gsuite" and "workspace" must match before "google" to avoid
   // mis-categorizing Google Workspace as Google Ads
+  // "canvas on demand" must match before "canva" (in-store signage, not software)
+  'canvas on demand': 'other',
   'gsuite': 'software_fees',
   'workspace': 'software_fees',
 
@@ -59,7 +61,12 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'hopkins': 'labor',
   'alexis': 'labor',
   'tyce': 'labor',
-  'hello digital': 'labor',
+  'clay b': 'labor',
+  'dev base': 'labor',
+
+  // Organic Marketing (consulting/content, not paid ads — added Jul 2026 per CIO)
+  'hello digital': 'organic_marketing',
+  'goodale consult': 'organic_marketing',
 
   // Sponsorships
   'metro alliance': 'sponsorship',
@@ -76,6 +83,12 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'big green': 'sponsorship',
   'umbrella media': 'sponsorship',
   'downtown events': 'sponsorship',
+  'ragbrai': 'sponsorship',
+  'dyersville': 'sponsorship',
+  'marshalltown': 'sponsorship',
+  'bliss balloon': 'sponsorship',
+  'nhl operating': 'sponsorship',
+  'nhrloperati': 'sponsorship',
 
   // DoorDash paid media (DD Marketing = DoorDash ads)
   'dd marketing': 'paid_media',
