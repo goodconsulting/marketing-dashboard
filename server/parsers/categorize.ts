@@ -29,9 +29,10 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'sinclair': 'paid_media',
 
   // Direct Mail & Print
-  'allegra': 'direct_mail_print',
+  // Allegra = uniforms & in-store signage; GotPrint = F&B labels (CIO, Jul 2026)
+  'allegra': 'other',
   'vistaprint': 'direct_mail_print',
-  'gotprint': 'direct_mail_print',
+  'gotprint': 'other',
   'usps': 'direct_mail_print',
   'vpc direct': 'direct_mail_print',
   'uline': 'direct_mail_print',

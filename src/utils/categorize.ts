@@ -27,9 +27,9 @@ const VENDOR_CATEGORIES: Record<string, SpendCategory> = {
   'sinclair': 'paid_media',
 
   // Direct Mail & Print
-  'allegra': 'direct_mail_print',
+  'allegra': 'other',
   'vistaprint': 'direct_mail_print',
-  'gotprint': 'direct_mail_print',
+  'gotprint': 'other',
   'usps': 'direct_mail_print',
   'vpc direct': 'direct_mail_print',
   'uline': 'direct_mail_print',
